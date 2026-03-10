@@ -806,8 +806,8 @@
     const aReachable = drawReachableSegment(frame.a, "#1d4ed8", "rgba(59, 130, 246, 0.24)");
     const bReachable = drawReachableSegment(frame.b, "#0f172a", "rgba(15, 23, 42, 0.20)");
     const overlapNow =
-      sepRadiusPx > 0 &&
-      segmentsWithinDistance(frame.a.min, frame.a.max, frame.b.min, frame.b.max, timeDataset.separation_threshold_m || 0);
+      timeDataset.distance_curve &&
+      frame.envelope_distance_nm < timeDataset.distance_curve.threshold_nm;
     if (overlapNow) {
       drawCapsuleIntersection(
         ctx,
@@ -894,10 +894,12 @@
     ctx.stroke();
     ctx.fillStyle = "#475569";
     ctx.font = "12px Segoe UI";
-    ctx.fillText(xLabel, width - padding.right - 52, height - 10);
+    ctx.textAlign = "center";
+    ctx.fillText(xLabel, padding.left + (width - padding.left - padding.right) / 2, height - 6);
     ctx.save();
-    ctx.translate(14, padding.top + 42);
+    ctx.translate(14, padding.top + (height - padding.top - padding.bottom) / 2);
     ctx.rotate(-Math.PI / 2);
+    ctx.textAlign = "center";
     ctx.fillText(yLabel, 0, 0);
     ctx.restore();
     ctx.restore();
@@ -943,10 +945,15 @@
 
     const curve = timeDataset.distance_curve;
     const padding = { left: 58, right: 20, top: 24, bottom: 36 };
+    const xStep = 60;
     const xMin = 0;
-    const xMax = Math.max(...curve.times_s, 1);
-    const yMax = Math.max(...curve.envelope_nm, ...curve.nominal_nm, curve.threshold_nm, 1);
-    const yMin = Math.max(0, Math.min(...curve.envelope_nm, ...curve.nominal_nm, curve.threshold_nm) - 0.3);
+    const rawXMax = Math.max(...curve.times_s, 1);
+    const xMax = Math.max(Math.ceil(rawXMax / xStep) * xStep, xStep);
+    const rawYMax = Math.max(...curve.envelope_nm, ...curve.nominal_nm, curve.threshold_nm, 1);
+    const rawYMin = Math.max(0, Math.min(...curve.envelope_nm, ...curve.nominal_nm, curve.threshold_nm) - 0.3);
+    const yStep = 5;
+    const yMin = Math.floor(rawYMin / yStep) * yStep;
+    const yMax = Math.max(Math.ceil(rawYMax / yStep) * yStep, yMin + yStep);
     const plotWidth = canvas.width - padding.left - padding.right;
     const plotHeight = canvas.height - padding.top - padding.bottom;
 
@@ -957,10 +964,10 @@
     };
 
     drawAxes(ctx, canvas.width, canvas.height, padding, "Distance (NM)", "Time (s)");
-    const xTickCount = 5;
-    const yTickCount = 5;
-    const xTickValues = Array.from({ length: xTickCount }, (_, idx) => xMin + ((xMax - xMin) * idx) / (xTickCount - 1));
-    const yTickValues = Array.from({ length: yTickCount }, (_, idx) => yMin + ((yMax - yMin) * idx) / (yTickCount - 1));
+    const xTickCount = Math.round((xMax - xMin) / xStep) + 1;
+    const xTickValues = Array.from({ length: xTickCount }, (_, idx) => xMin + idx * xStep);
+    const yTickCount = Math.round((yMax - yMin) / yStep) + 1;
+    const yTickValues = Array.from({ length: yTickCount }, (_, idx) => yMin + idx * yStep);
     drawAxisTicks(ctx, padding, plotWidth, plotHeight, xTickValues, yTickValues, toCanvas);
 
     const drawCurve = (times, values, color, width, dash = []) => {
