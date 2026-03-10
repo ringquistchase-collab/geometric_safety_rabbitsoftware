@@ -25,11 +25,7 @@ import typing
 import numpy as np
 
 from geometric_safety import relevant_aircraft as ra
-
-NMI_TO_M = 1852.0
-DEG_TO_RAD = math.pi / 180.0
-RAD_TO_DEG = 180.0 / math.pi
-EARTH_RADIUS_IN_METERS = 6378137.0
+from geometric_safety.util import DEG_TO_RAD, EARTH_RADIUS_IN_METERS, NMI_TO_M, RAD_TO_DEG
 
 
 @dataclass(frozen=True)

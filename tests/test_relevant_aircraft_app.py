@@ -10,15 +10,15 @@ pytest.importorskip("fastapi")
 from fastapi.testclient import TestClient
 
 from apps.relevant_aircraft.relevant_aircraft_app import app
-from geometric_safety import (
-    NMI_TO_M,
+from geometric_safety.demo import (
     TURN_DEMO_SCENARIOS,
     build_turn_debug_payload,
-    catch_up_projection_interval_with_turns,
     get_turn_preset_options,
     heading_summary,
     turn_duration_s,
 )
+from geometric_safety.relevant_aircraft import catch_up_projection_interval_with_turns
+from geometric_safety.util import NMI_TO_M
 
 
 def fixed_heading_payload() -> dict[str, float | int | str]:
