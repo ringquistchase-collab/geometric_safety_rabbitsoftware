@@ -6,6 +6,7 @@ Run with ``python -m geometric_safety.plotting heatmap`` or
 
 from __future__ import annotations
 
+import math
 from typing import TYPE_CHECKING, Any
 
 import numba
@@ -32,7 +33,7 @@ from geometric_safety.util import (
     KT_TO_MPS,
     NMI_TO_M,
     RAD_TO_DEG,
-    _closest_point_on_convex_polygon,
+    closest_point_on_convex_polygon,
     heading_to_unit_vector,
     latlon_to_local_xy,
 )
@@ -41,8 +42,6 @@ if TYPE_CHECKING:
     from matplotlib.axes import Axes
 else:
     Axes = Any
-
-import math
 
 
 @numba.jit(nopython=True, fastmath=True, cache=True, inline="always", error_model="numpy")
@@ -332,7 +331,7 @@ if __name__ == "__main__":
             )
             origin = np.zeros(2, dtype=np.float64)
             rel_nom = a_pos_nom - b_pos_nom  # pyright: ignore[reportOperatorIssue]
-            rel_closest_point, _ = _closest_point_on_convex_polygon(origin, rel_hull)
+            rel_closest_point, _ = closest_point_on_convex_polygon(origin, rel_hull)
             a_speed_span_t_m = float(np.linalg.norm(a_pos_max - a_pos_min))
             b_speed_span_t_m = float(np.linalg.norm(b_pos_max - b_pos_min))
             a_speed_span_end_m = float(np.linalg.norm(a_traj_max[-1] - a_traj_min[-1]))

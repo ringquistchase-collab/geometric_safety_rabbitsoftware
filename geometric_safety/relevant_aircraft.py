@@ -308,7 +308,7 @@ This observation is now used explicitly in the implementation:
 2. The hot-path hull construction for these tiny 4- and 5-point inputs uses a
    specialized small-set hull builder rather than the full generic monotone-chain
    implementation.
-3. The generic `_convex_hull` function is retained as a reference implementation and
+3. The generic `convex_hull` function is retained as a reference implementation and
    sanity oracle; tests compare the optimized structured path against it.
 
 This optimization does not change the mathematics of the reachable sets. It only
@@ -320,11 +320,11 @@ How this maps to functions
 --------------------------
 - `heading_to_unit_vector`: heading -> east/north direction.
 - `latlon_to_local_xy`: latitude/longitude -> local east/north coordinates.
-- `_small_convex_hull`: optimized hull builder for the module's tiny structured inputs.
+- `small_convex_hull`: optimized hull builder for the module's tiny structured inputs.
 - `_speed_rectangle_corner_points`: shared affine speed-corner kernel.
 - `compute_relative_velocity_hull`: straight-line reachable displacement hull over
   [0, T].
-- `_closest_point_on_convex_polygon`: Euclidean projection onto a convex polygon.
+- `closest_point_on_convex_polygon`: Euclidean projection onto a convex polygon.
 - `_closest_time_from_projection`: straight-line time recovery from the projected point.
 - `catch_up_projection_interval`: exact straight-line safety test.
 - `_turn_displacement_basis`: closed-form unit-speed displacement for a turn-then-straight
@@ -383,12 +383,12 @@ import numpy as np
 from geometric_safety.util import (
     DEG_TO_RAD,
     KT_TO_MPS,
-    _closest_point_on_convex_polygon,
-    _small_convex_hull,
     clip_value,
+    closest_point_on_convex_polygon,
     heading_diff,
     heading_to_unit_vector,
     latlon_to_local_xy,
+    small_convex_hull,
 )
 
 # Headings within this tolerance are treated as straight flight so tiny numerical turns
@@ -629,7 +629,7 @@ def compute_relative_velocity_hull(
         b_min_speed=b_min,
         b_max_speed=b_max,
     )
-    return _small_convex_hull(reachable_points)
+    return small_convex_hull(reachable_points)
 
 
 @numba.njit(cache=True, fastmath=True)
@@ -708,7 +708,7 @@ def catch_up_projection_interval(
     # Project the negative initial relative position onto the reachable displacement
     # hull. The resulting displacement is the one that brings the pair as close together
     # as the model allows.
-    closest_vec, _ = _closest_point_on_convex_polygon(-rel_pos0, hull)
+    closest_vec, _ = closest_point_on_convex_polygon(-rel_pos0, hull)
     rel_after = rel_pos0 + closest_vec
     min_distance_m = float(np.linalg.norm(rel_after))
     closest_time_s = _closest_time_from_projection(closest_vec, hull, projection_time_s)
@@ -1006,7 +1006,7 @@ def _relative_position_hull_at_time(
 
     # Collapse duplicate/collinear corners so downstream projection logic can assume a
     # clean convex polygon representation.
-    return _small_convex_hull(pts)
+    return small_convex_hull(pts)
 
 
 @numba.njit(cache=True, fastmath=True)
@@ -1047,7 +1047,7 @@ def _min_distance_to_relative_hull_at_time(
         t_s=t_s,
     )
     origin = np.zeros(2, dtype=np.float64)
-    _closest_point, min_dist_m = _closest_point_on_convex_polygon(origin, hull)
+    _closest_point, min_dist_m = closest_point_on_convex_polygon(origin, hull)
     return min_dist_m
 
 

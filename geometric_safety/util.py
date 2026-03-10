@@ -166,12 +166,12 @@ def cross_2d(o: np.ndarray, a: np.ndarray, b: np.ndarray) -> float:
 
 
 @numba.njit(cache=True, fastmath=True)
-def _small_convex_hull(pts: np.ndarray) -> np.ndarray:
+def small_convex_hull(pts: np.ndarray) -> np.ndarray:
     """
     Compute a convex hull for tiny point sets without the generic monotone-chain path.
 
     This helper is used only for the structured 4- and 5-point hulls that arise from
-    the speed-rectangle geometry in this module. The full `_convex_hull` implementation
+    the speed-rectangle geometry in this module. The full `convex_hull` implementation
     is retained below as the generic reference path and sanity oracle.
     """
     n = pts.shape[0]
@@ -268,7 +268,7 @@ def _small_convex_hull(pts: np.ndarray) -> np.ndarray:
 
 
 @numba.njit(cache=True, fastmath=True)
-def _convex_hull(pts: np.ndarray) -> np.ndarray:
+def convex_hull(pts: np.ndarray) -> np.ndarray:
     """
     Compute the convex hull of a set of 2-D points using Andrew's monotone chain.
 
@@ -461,7 +461,7 @@ def _closest_point_on_segment(pt: np.ndarray, a: np.ndarray, b: np.ndarray) -> t
 
 
 @numba.njit(cache=True, fastmath=True)
-def _closest_point_on_convex_polygon(pt: np.ndarray, hull: np.ndarray) -> tuple[np.ndarray, float]:
+def closest_point_on_convex_polygon(pt: np.ndarray, hull: np.ndarray) -> tuple[np.ndarray, float]:
     """
     Find the Euclidean projection of a point onto a convex polygon.
 

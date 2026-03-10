@@ -549,9 +549,9 @@ The hot-path hulls in this module are tiny:
 - five-point hulls for the straight displacement cone when the origin is included.
 
 Using the full generic monotone-chain hull on these tiny structured inputs is correct
-but unnecessary. `_small_convex_hull` specializes the hot path for exactly these cases.
+but unnecessary. `small_convex_hull` specializes the hot path for exactly these cases.
 
-The generic `_convex_hull` routine is intentionally retained as a reference
+The generic `convex_hull` routine is intentionally retained as a reference
 implementation. Tests compare the optimized path against it so that the optimization
 remains a change in cost, not a change in mathematical meaning.
 

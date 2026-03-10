@@ -26,7 +26,7 @@ from geometric_safety.util import (
     KT_TO_MPS,
     M_TO_NMI,
     RAD_TO_DEG,
-    _closest_point_on_convex_polygon,
+    closest_point_on_convex_polygon,
     heading_diff,
     latlon_to_local_xy,
 )
@@ -518,7 +518,7 @@ def build_turn_debug_payload(
             t_s=float(t_s),
         )
         rel_nom = a_pos_nom - b_pos_nom  # pyright: ignore[reportOperatorIssue]
-        rel_closest_point, _ = _closest_point_on_convex_polygon(np.zeros(2, dtype=np.float64), rel_hull)
+        rel_closest_point, _ = closest_point_on_convex_polygon(np.zeros(2, dtype=np.float64), rel_hull)
         relative_points.extend((rel_hull, rel_nom[None, :], rel_closest_point[None, :]))
         nominal_distance_nm = float(np.linalg.norm(rel_nom) * M_TO_NMI)
         envelope_distance_nm = float(np.linalg.norm(rel_closest_point) * M_TO_NMI)

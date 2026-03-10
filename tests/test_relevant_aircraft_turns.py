@@ -35,12 +35,12 @@ from geometric_safety.util import (
     KT_TO_MPS,
     NMI_TO_M,
     RAD_TO_DEG,
-    _closest_point_on_convex_polygon,
-    _convex_hull,
-    _small_convex_hull,
+    closest_point_on_convex_polygon,
+    convex_hull,
     heading_diff,
     heading_to_unit_vector,
     latlon_to_local_xy,
+    small_convex_hull,
 )
 
 # ---------------------------------------------------------------------------
@@ -57,11 +57,11 @@ def assert_hulls_equivalent(hull_a: np.ndarray, hull_b: np.ndarray, abs_tol: flo
     geometrically rather than comparing raw vertex arrays directly.
     """
     for vertex in hull_a:
-        _proj, distance = _closest_point_on_convex_polygon(vertex, hull_b)
+        _proj, distance = closest_point_on_convex_polygon(vertex, hull_b)
         assert distance == pytest.approx(0.0, abs=abs_tol)
 
     for vertex in hull_b:
-        _proj, distance = _closest_point_on_convex_polygon(vertex, hull_a)
+        _proj, distance = closest_point_on_convex_polygon(vertex, hull_a)
         assert distance == pytest.approx(0.0, abs=abs_tol)
 
 
@@ -341,7 +341,7 @@ class TestHelpers:
         for a_speed in (a_min, a_max):
             for b_speed in (b_min, b_max):
                 corner = rel_pos0 + a_speed * a_basis - b_speed * b_basis
-                projected, distance = _closest_point_on_convex_polygon(corner, hull)
+                projected, distance = closest_point_on_convex_polygon(corner, hull)
                 assert distance == pytest.approx(0.0, abs=1e-9)
                 assert np.linalg.norm(projected - corner) == pytest.approx(0.0, abs=1e-9)
 
@@ -380,8 +380,8 @@ class TestHelpers:
             dtype=np.float64,
         )
 
-        small_hull = _small_convex_hull(pts)
-        generic_hull = _convex_hull(pts)
+        small_hull = small_convex_hull(pts)
+        generic_hull = convex_hull(pts)
 
         assert_hulls_equivalent(small_hull, generic_hull)
 
@@ -412,7 +412,7 @@ class TestHelpers:
             b_min_speed=b_min,
             b_max_speed=b_max,
         )
-        reference_hull = _convex_hull(reference_points)
+        reference_hull = convex_hull(reference_points)
 
         assert_hulls_equivalent(optimized_hull, reference_hull)
 
@@ -448,7 +448,7 @@ class TestHelpers:
             b_min_speed=b_min,
             b_max_speed=b_max,
         )
-        reference_hull = _convex_hull(reference_corners)
+        reference_hull = convex_hull(reference_corners)
 
         assert_hulls_equivalent(optimized_hull, reference_hull)
 
@@ -715,7 +715,7 @@ class TestHelpers:
         query = np.array([25435.71039945353, -3852.776652253924], dtype=np.float64)
 
         hull = compute_relative_velocity_hull(a_heading, a_speed, b_heading, b_speed, speed_diff, T)
-        closest_vec, _ = _closest_point_on_convex_polygon(query, hull)
+        closest_vec, _ = closest_point_on_convex_polygon(query, hull)
         recovered_t = _closest_time_from_projection(closest_vec, hull, T)
 
         dir_a = heading_to_unit_vector(a_heading)
@@ -728,8 +728,8 @@ class TestHelpers:
             [recovered_t * (sa * dir_a - sb * dir_b) for sa in (a_min, a_max) for sb in (b_min, b_max)],
             dtype=np.float64,
         )
-        exact_slice_hull = _convex_hull(exact_slice)
-        projected, distance = _closest_point_on_convex_polygon(closest_vec, exact_slice_hull)
+        exact_slice_hull = convex_hull(exact_slice)
+        projected, distance = closest_point_on_convex_polygon(closest_vec, exact_slice_hull)
 
         assert distance == pytest.approx(0.0, abs=1e-9)
         assert np.linalg.norm(projected - closest_vec) == pytest.approx(0.0, abs=1e-9)
