@@ -11,17 +11,19 @@ import numpy as np
 from pydantic import BaseModel, Field
 
 from geometric_safety import (
-    CUSTOM_TURN_PRESET_ID,
     EARTH_RADIUS_IN_METERS,
     KT_TO_MPS,
     NMI_TO_M,
-    build_turn_debug_payload,
     catch_up_projection_interval,
     catch_up_projection_interval_with_turns,
     compute_relative_velocity_hull,
-    get_turn_preset_options,
     heading_to_unit_vector,
     latlon_to_local_xy,
+)
+from geometric_safety.demo import (
+    CUSTOM_TURN_PRESET_ID,
+    build_turn_debug_payload,
+    get_turn_preset_options,
 )
 
 BASE_DIR = Path(__file__).parent
