@@ -148,6 +148,7 @@
       return;
     }
     const ctx = el.getContext("2d");
+    if (!ctx) { return; }
     const dpr = window.devicePixelRatio || 1;
     ctx.save();
     ctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -262,7 +263,7 @@
       return;
     }
     const dpr = window.devicePixelRatio || 1;
-    const cssWidth = Math.max(Math.min(el.parentElement.clientWidth || el.width, 960), 260);
+    const cssWidth = Math.max(Math.min(el.parentElement.clientWidth || el.getBoundingClientRect().width || 260, 960), 260);
     const cssHeight = Math.round(cssWidth * aspectRatio);
     el.width = Math.round(cssWidth * dpr);
     el.height = Math.round(cssHeight * dpr);
@@ -634,7 +635,7 @@
     ctx.restore();
   }
 
-  function drawCapsuleIntersection(ctx, canvas, startA, endA, startB, endB, radiusPx, fillStyle, alpha = 1) {
+  function drawCapsuleIntersection(ctx, canvas, startA, endA, startB, endB, radiusPx, alpha = 1) {
     if (!canvas || radiusPx <= 0) {
       return;
     }
@@ -841,7 +842,6 @@
         bReachable.minPx,
         bReachable.maxPx,
         sepRadiusPx,
-        "rgba(248, 113, 113, 1)",
         0.22
       );
     }
