@@ -12,7 +12,12 @@ dependencies = [
 
 [dependency-groups]
 apps = ["fastapi[all]>=0.120.4"]
-dev = ["httpx>=0.28.1", "pytest>=9.0.2", "ruff>=0.15.5"]
+dev = [
+    "httpx>=0.28.1",
+    "pytest>=9.0.2",
+    "ruff>=0.15.5",
+    "ty>=0.0.21",
+]
 
 [build-system]
 build-backend = "setuptools.build_meta"
