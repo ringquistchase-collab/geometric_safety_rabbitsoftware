@@ -15,6 +15,30 @@ The solver uses only numpy and numba (no ATC domain dependencies), making it reu
 
 ## Installation
 
+Add to an existing uv project:
+
+```bash
+uv add geometric-safety --git https://github.com/project-bluebird/geometric_safety.git
+```
+
+This adds two entries to your `pyproject.toml`:
+
+```toml
+# in [project] dependencies
+"geometric_safety>=0.1.0"
+
+# in [tool.uv.sources]
+geometric_safety = {git = "https://github.com/project-bluebird/geometric_safety"}
+```
+
+To pin a specific commit or tag, pass `--rev`:
+
+```bash
+uv add geometric-safety --git https://github.com/project-bluebird/geometric_safety.git --rev <commit-or-tag>
+```
+
+For local development of this repo itself:
+
 ```bash
 uv sync
 ```
