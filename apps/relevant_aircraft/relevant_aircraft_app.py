@@ -10,20 +10,22 @@ from fastapi.templating import Jinja2Templates
 import numpy as np
 from pydantic import BaseModel, Field
 
-from geometric_safety import (
-    EARTH_RADIUS_IN_METERS,
-    KT_TO_MPS,
-    NMI_TO_M,
-    catch_up_projection_interval,
-    catch_up_projection_interval_with_turns,
-    compute_relative_velocity_hull,
-    heading_to_unit_vector,
-    latlon_to_local_xy,
-)
 from geometric_safety.demo import (
     CUSTOM_TURN_PRESET_ID,
     build_turn_debug_payload,
     get_turn_preset_options,
+)
+from geometric_safety.relevant_aircraft import (
+    catch_up_projection_interval,
+    catch_up_projection_interval_with_turns,
+    compute_relative_velocity_hull,
+)
+from geometric_safety.util import (
+    EARTH_RADIUS_IN_METERS,
+    KT_TO_MPS,
+    NMI_TO_M,
+    heading_to_unit_vector,
+    latlon_to_local_xy,
 )
 
 BASE_DIR = Path(__file__).parent
