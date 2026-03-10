@@ -12,7 +12,6 @@ import numba
 import numpy as np
 
 from geometric_safety.demo import (
-    NMI_TO_M,
     TURN_DEMO_SCENARIOS,
     corridor_polygon,
     envelope_distance_curve,
@@ -24,13 +23,16 @@ from geometric_safety.demo import (
     turn_duration_s,
 )
 from geometric_safety.relevant_aircraft import (
+    _relative_position_hull_at_time,
+    catch_up_projection_interval_with_turns,
+)
+from geometric_safety.util import (
     DEG_TO_RAD,
     EARTH_RADIUS_IN_METERS,
     KT_TO_MPS,
+    NMI_TO_M,
     RAD_TO_DEG,
     _closest_point_on_convex_polygon,
-    _relative_position_hull_at_time,
-    catch_up_projection_interval_with_turns,
     heading_to_unit_vector,
     latlon_to_local_xy,
 )

@@ -15,17 +15,12 @@ import math
 import numpy as np
 import pytest
 
-from geometric_safety import heading_diff
 from geometric_safety.relevant_aircraft import (
-    KT_TO_MPS,
-    _closest_point_on_convex_polygon,
     _closest_time_from_projection,
-    _convex_hull,
     _interval_distance_lower_bound,
     _interval_local_lipschitz_mps,
     _relative_position_hull_at_time,
     _relative_speed_mps,
-    _small_convex_hull,
     _speed_rectangle_corner_points,
     _turn_displacement_basis,
     _turn_speed_schedule_buffer_m,
@@ -33,15 +28,20 @@ from geometric_safety.relevant_aircraft import (
     catch_up_projection_interval,
     catch_up_projection_interval_with_turns,
     compute_relative_velocity_hull,
+)
+from geometric_safety.util import (
+    DEG_TO_RAD,
+    EARTH_RADIUS_IN_METERS,
+    KT_TO_MPS,
+    NMI_TO_M,
+    RAD_TO_DEG,
+    _closest_point_on_convex_polygon,
+    _convex_hull,
+    _small_convex_hull,
+    heading_diff,
     heading_to_unit_vector,
     latlon_to_local_xy,
 )
-
-NMI_TO_M = 1852.0
-DEG_TO_RAD = math.pi / 180.0
-RAD_TO_DEG = 180.0 / math.pi
-EARTH_RADIUS_IN_METERS = 6378137.0
-
 
 # ---------------------------------------------------------------------------
 # Helpers for numerical trajectory simulation

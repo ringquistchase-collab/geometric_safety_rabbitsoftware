@@ -15,23 +15,24 @@ from typing import Any
 import numpy as np
 
 from geometric_safety.relevant_aircraft import (
-    DEG_TO_RAD,
-    EARTH_RADIUS_IN_METERS,
-    KT_TO_MPS,
-    RAD_TO_DEG,
-    _closest_point_on_convex_polygon,
     _min_distance_to_relative_hull_at_time,
     _relative_position_hull_at_time,
     _turn_displacement_basis,
     catch_up_projection_interval_with_turns,
+)
+from geometric_safety.util import (
+    DEG_TO_RAD,
+    EARTH_RADIUS_IN_METERS,
+    KT_TO_MPS,
+    M_TO_NMI,
+    RAD_TO_DEG,
+    _closest_point_on_convex_polygon,
     heading_diff,
     latlon_to_local_xy,
 )
 
 DEMO_REF_LAT = 51.0
 DEMO_REF_LON = -1.0
-NMI_TO_M = 1852.0
-M_TO_NMI = 1.0 / NMI_TO_M
 CUSTOM_TURN_PRESET_ID = "custom"
 
 
