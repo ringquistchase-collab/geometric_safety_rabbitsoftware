@@ -1923,7 +1923,7 @@ def catch_up_projection_interval_with_turns(
 # ==========================================================================
 #
 # Everything below this line is auxiliary support for the interactive FastAPI
-# visualiser and the standalone `python -m falcon.optimisation.relevant_aircraft`
+# visualiser and the standalone `python -m geometric_safety.relevant_aircraft`
 # demos. Keeping it in this file preserves a single handoff-friendly module that
 # contains both the core reachability logic and the demo scaffolding built around
 # it. The core solver above does not depend on any of these helpers.

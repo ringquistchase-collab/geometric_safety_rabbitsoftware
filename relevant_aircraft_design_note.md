@@ -1,7 +1,7 @@
 # Relevant Aircraft Projection Design Note
 
 This note records the mathematical model and implementation choices behind
-`falcon/optimisation/relevant_aircraft.py`. It is intended as a design document now
+`geometric_safety/relevant_aircraft.py`. It is intended as a design document now
 and as a starting point for later paper-writing. The emphasis is on what is being
 computed, why the geometry is valid, where conservatism enters, and what guarantees the
 returned safety decision does and does not provide.

@@ -1,7 +1,7 @@
 # Relevant Aircraft Method Note
 
 This note is the code-facing summary of the method implemented in
-`falcon/optimisation/relevant_aircraft.py`.
+`geometric_safety/relevant_aircraft.py`.
 
 It is deliberately short. It records:
 
