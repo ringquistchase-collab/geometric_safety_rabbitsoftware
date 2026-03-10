@@ -138,12 +138,22 @@
     overlay.classList.toggle("visible", Boolean(isVisible));
   }
 
+  function canvasCSS(el) {
+    const dpr = window.devicePixelRatio || 1;
+    return { width: el.width / dpr, height: el.height / dpr };
+  }
+
   function clearCanvas(el) {
     if (!el) {
       return;
     }
     const ctx = el.getContext("2d");
+    const dpr = window.devicePixelRatio || 1;
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.clearRect(0, 0, el.width, el.height);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.restore();
   }
 
   function updateTimeSliderState(frameCount) {
@@ -251,9 +261,15 @@
     if (!el || !el.parentElement) {
       return;
     }
-    const width = Math.max(Math.min(el.parentElement.clientWidth || el.width, 960), 260);
-    el.width = width;
-    el.height = Math.round(width * aspectRatio);
+    const dpr = window.devicePixelRatio || 1;
+    const cssWidth = Math.max(Math.min(el.parentElement.clientWidth || el.width, 960), 260);
+    const cssHeight = Math.round(cssWidth * aspectRatio);
+    el.width = Math.round(cssWidth * dpr);
+    el.height = Math.round(cssHeight * dpr);
+    el.style.width = cssWidth + "px";
+    el.style.height = cssHeight + "px";
+    const ctx = el.getContext("2d");
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   }
 
   function resizeCanvases() {
@@ -330,40 +346,42 @@
   }
 
   function makeWorldToCanvas(bounds, canvas) {
+    const { width, height } = canvasCSS(canvas);
     const xRange = Math.max(bounds.x_max - bounds.x_min, 1);
     const yRange = Math.max(bounds.y_max - bounds.y_min, 1);
-    const scale = Math.min(canvas.width / xRange, canvas.height / yRange);
-    const offsetX = (canvas.width - xRange * scale) / 2;
-    const offsetY = (canvas.height - yRange * scale) / 2;
+    const scale = Math.min(width / xRange, height / yRange);
+    const offsetX = (width - xRange * scale) / 2;
+    const offsetY = (height - yRange * scale) / 2;
     return {
       scale,
       toCanvas(point) {
         return [
           offsetX + (point[0] - bounds.x_min) * scale,
-          canvas.height - (offsetY + (point[1] - bounds.y_min) * scale),
+          height - (offsetY + (point[1] - bounds.y_min) * scale),
         ];
       },
     };
   }
 
   function drawBackgroundGrid(ctx, canvas) {
+    const { width, height } = canvasCSS(canvas);
     ctx.save();
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.clearRect(0, 0, width, height);
     ctx.fillStyle = "#e2e8f0";
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.fillRect(0, 0, width, height);
     ctx.strokeStyle = "rgba(148, 163, 184, 0.25)";
     ctx.lineWidth = 1;
     const divisions = 6;
     for (let i = 1; i < divisions; i += 1) {
-      const x = (canvas.width / divisions) * i;
-      const y = (canvas.height / divisions) * i;
+      const x = (width / divisions) * i;
+      const y = (height / divisions) * i;
       ctx.beginPath();
       ctx.moveTo(x, 0);
-      ctx.lineTo(x, canvas.height);
+      ctx.lineTo(x, height);
       ctx.stroke();
       ctx.beginPath();
       ctx.moveTo(0, y);
-      ctx.lineTo(canvas.width, y);
+      ctx.lineTo(width, y);
       ctx.stroke();
     }
     ctx.restore();
@@ -374,7 +392,8 @@
       return;
     }
     const ctx = gridCanvas.getContext("2d");
-    ctx.clearRect(0, 0, gridCanvas.width, gridCanvas.height);
+    const { width: gw, height: gh } = canvasCSS(gridCanvas);
+    ctx.clearRect(0, 0, gw, gh);
 
     const rows = gridDataset.lats.length;
     const cols = gridDataset.lons.length;
@@ -382,32 +401,32 @@
       return;
     }
 
-    const cellWidth = gridCanvas.width / cols;
-    const cellHeight = gridCanvas.height / rows;
+    const cellWidth = gw / cols;
+    const cellHeight = gh / rows;
     for (let i = 0; i < rows; i += 1) {
       for (let j = 0; j < cols; j += 1) {
         ctx.fillStyle = gridDataset.safe[i][j] ? "#15803d" : "#dc2626";
         const x = j * cellWidth;
-        const y = gridCanvas.height - (i + 1) * cellHeight;
+        const y = gh - (i + 1) * cellHeight;
         ctx.fillRect(x, y, cellWidth + 1, cellHeight + 1);
       }
     }
 
     ctx.lineWidth = 1;
     ctx.strokeStyle = "rgba(15, 23, 42, 0.24)";
-    ctx.strokeRect(0, 0, gridCanvas.width, gridCanvas.height);
+    ctx.strokeRect(0, 0, gw, gh);
 
     const { a, b, lat_bounds: latBounds, lon_bounds: lonBounds } = gridDataset;
     const drawAircraft = (aircraft, color) => {
-      const px = lonToX(lonBounds, aircraft.lon, gridCanvas.width);
-      const py = latToY(latBounds, aircraft.lat, gridCanvas.height);
+      const px = lonToX(lonBounds, aircraft.lon, gw);
+      const py = latToY(latBounds, aircraft.lat, gh);
       ctx.fillStyle = color;
       ctx.beginPath();
       ctx.arc(px, py, 6, 0, Math.PI * 2);
       ctx.fill();
 
       const [vx, vy] = headingVector(aircraft.heading);
-      const arrowScale = Math.min(gridCanvas.width, gridCanvas.height) * 0.06;
+      const arrowScale = Math.min(gw, gh) * 0.06;
       ctx.beginPath();
       ctx.moveTo(px, py);
       ctx.lineTo(px + vx * arrowScale, py - vy * arrowScale);
@@ -619,16 +638,21 @@
     if (!canvas || radiusPx <= 0) {
       return;
     }
+    const dpr = window.devicePixelRatio || 1;
+    const { width, height } = canvasCSS(canvas);
     const overlapCanvas = document.createElement("canvas");
-    overlapCanvas.width = canvas.width;
-    overlapCanvas.height = canvas.height;
+    overlapCanvas.width = Math.round(width * dpr);
+    overlapCanvas.height = Math.round(height * dpr);
     const overlapCtx = overlapCanvas.getContext("2d");
+    overlapCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
     drawCapsuleMask(overlapCtx, startA, endA, radiusPx, "rgba(248, 113, 113, 1)");
     overlapCtx.globalCompositeOperation = "destination-in";
     drawCapsuleMask(overlapCtx, startB, endB, radiusPx, "rgba(0, 0, 0, 1)");
     ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.globalAlpha = alpha;
     ctx.drawImage(overlapCanvas, 0, 0);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.restore();
   }
 
@@ -954,8 +978,9 @@
     const yStep = 5;
     const yMin = Math.floor(rawYMin / yStep) * yStep;
     const yMax = Math.max(Math.ceil(rawYMax / yStep) * yStep, yMin + yStep);
-    const plotWidth = canvas.width - padding.left - padding.right;
-    const plotHeight = canvas.height - padding.top - padding.bottom;
+    const { width: canvasW, height: canvasH } = canvasCSS(canvas);
+    const plotWidth = canvasW - padding.left - padding.right;
+    const plotHeight = canvasH - padding.top - padding.bottom;
 
     const toCanvas = (x, y) => {
       const px = padding.left + ((x - xMin) / (xMax - xMin || 1)) * plotWidth;
@@ -963,7 +988,7 @@
       return [px, py];
     };
 
-    drawAxes(ctx, canvas.width, canvas.height, padding, "Distance (NM)", "Time (s)");
+    drawAxes(ctx, canvasW, canvasH, padding, "Distance (NM)", "Time (s)");
     const xTickCount = Math.round((xMax - xMin) / xStep) + 1;
     const xTickValues = Array.from({ length: xTickCount }, (_, idx) => xMin + idx * xStep);
     const yTickCount = Math.round((yMax - yMin) / yStep) + 1;
