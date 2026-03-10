@@ -1,0 +1,73 @@
+[project]
+name = "geometric_safety"
+version = "0.1.0"
+description = "Geometric reachability-based safety filtering for air traffic control"
+requires-python = ">=3.13,<3.14"
+dependencies = [
+    "matplotlib>=3.10.8",
+    "numba>=0.64.0",
+    "numpy>=2.4.3",
+]
+
+[dependency-groups]
+apps = ["fastapi>=0.120.4"]
+dev = ["pytest>=9.0.2", "ruff>=0.15.5"]
+
+[build-system]
+build-backend = "setuptools.build_meta"
+requires = ["setuptools>=82.0.1"]
+
+[tool.setuptools.packages.find]
+include = ["geometric_safety*"]
+namespaces = false
+where = ["."]
+
+[tool.ruff]
+exclude = [".venv/", ".git/"]
+extend-include = ["*.ipynb"]
+line-length = 120
+target-version = "py313"
+
+[tool.ruff.lint]
+ignore = [
+    "ANN401",
+    "B905",
+    "PTH123",
+]
+select = [
+    "E",
+    "F",
+    "I",
+    "UP",
+    "B",
+    "SIM",
+    "PD",
+    "W",
+    "ANN",
+    "ASYNC",
+    "A",
+    "C4",
+    "ISC",
+    "ICN",
+    "PT",
+    "RET",
+    "ARG",
+    "R",
+    "PERF",
+    "RUF",
+    "PIE",
+    "FURB",
+    "PTH",
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["ANN", "ARG", "RUF059"]
+
+[tool.ruff.lint.isort]
+case-sensitive = false
+combine-as-imports = true
+force-sort-within-sections = true
+
+[tool.ruff.format]
+indent-style = "space"
+quote-style = "double"
