@@ -10,7 +10,7 @@ from fastapi.templating import Jinja2Templates
 import numpy as np
 from pydantic import BaseModel, Field
 
-from geometric_safety.demo import (
+from geometric_safety.demo_utils import (
     CUSTOM_TURN_PRESET_ID,
     build_turn_debug_payload,
     get_turn_preset_options,
@@ -413,4 +413,4 @@ def get_app() -> FastAPI:
 if __name__ == "__main__":
     import uvicorn
 
-    uvicorn.run("apps.relevant_aircraft.relevant_aircraft_app:app", host="0.0.0.0", port=8008, reload=False)
+    uvicorn.run("app:app", host="0.0.0.0", port=8008, reload=False)

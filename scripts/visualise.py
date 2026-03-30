@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING, Any
 import numba
 import numpy as np
 
-from geometric_safety.demo import (
+from geometric_safety.demo_utils import (
     TURN_DEMO_SCENARIOS,
     corridor_polygon,
     envelope_distance_curve,

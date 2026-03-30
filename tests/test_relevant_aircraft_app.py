@@ -9,8 +9,8 @@ import pytest
 pytest.importorskip("fastapi")
 from fastapi.testclient import TestClient
 
-from apps.relevant_aircraft.relevant_aircraft_app import app
-from geometric_safety.demo import (
+from app import app
+from geometric_safety.demo_utils import (
     TURN_DEMO_SCENARIOS,
     build_turn_debug_payload,
     get_turn_preset_options,

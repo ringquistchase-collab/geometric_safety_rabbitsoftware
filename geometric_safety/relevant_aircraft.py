@@ -1,9 +1,6 @@
 """
 Relative-aircraft catch-up projection using convex geometry.
 
-For a longer design-level exposition of the same mathematics and implementation
-choices, see `relevant_aircraft_design_note.md` at the repository root.
-
 Plain-language overview
 -----------------------
 This module asks a practical controller-style question:
@@ -1112,6 +1109,255 @@ def _turn_speed_schedule_buffer_m(
 
 
 @numba.njit(cache=True, fastmath=True)
+def _catch_up_projection_interval_with_turns_local(
+    rel_pos0: np.ndarray,
+    a_heading0_deg: float,
+    a_target_heading_deg: float,
+    a_speed_kt: float,
+    a_turn_rate_deg_sec: float,
+    b_heading0_deg: float,
+    b_target_heading_deg: float,
+    b_speed_kt: float,
+    b_turn_rate_deg_sec: float,
+    separation_threshold_m: float,
+    speed_diff_kt: float,
+    projection_time_s: float,
+    use_interval_local_lipschitz: bool = TURN_USE_INTERVAL_LOCAL_LIPSCHITZ_DEFAULT,
+    turn_speed_schedule_uncertainty_kt: float = TURN_SPEED_SCHEDULE_UNCERTAINTY_KT_DEFAULT,
+    min_cert_interval_s: float = TURN_TIME_CERT_MIN_INTERVAL_S,
+) -> tuple[bool, float, float]:
+    """Internal local-coordinate entrypoint for the turn-aware solver."""
+    a_turn_angle_deg = heading_diff(a_heading0_deg, a_target_heading_deg)
+    b_turn_angle_deg = heading_diff(b_heading0_deg, b_target_heading_deg)
+    a_is_turning = abs(a_turn_angle_deg) >= TURN_HEADING_EPS_DEG and abs(a_turn_rate_deg_sec) > TURN_RATE_EPS_DEG_PER_S
+    b_is_turning = abs(b_turn_angle_deg) >= TURN_HEADING_EPS_DEG and abs(b_turn_rate_deg_sec) > TURN_RATE_EPS_DEG_PER_S
+
+    if not a_is_turning and not b_is_turning:
+        return catch_up_projection_interval(
+            a_lat=0.0,
+            a_lon=0.0,
+            a_heading=a_target_heading_deg,
+            a_speed_kt=a_speed_kt,
+            b_lat=0.0,
+            b_lon=0.0,
+            b_heading=b_target_heading_deg,
+            b_speed_kt=b_speed_kt,
+            separation_threshold_m=separation_threshold_m,
+            speed_diff_kt=speed_diff_kt,
+            projection_time_s=projection_time_s,
+            rel_pos_override=rel_pos0,
+        )
+
+    # Convert the speed envelope once up front; all later geometry is done in metres and
+    # seconds.
+    a_min_speed_mps = max((a_speed_kt - speed_diff_kt), 0.0) * KT_TO_MPS
+    a_max_speed_mps = (a_speed_kt + speed_diff_kt) * KT_TO_MPS
+    b_min_speed_mps = max((b_speed_kt - speed_diff_kt), 0.0) * KT_TO_MPS
+    b_max_speed_mps = (b_speed_kt + speed_diff_kt) * KT_TO_MPS
+
+    # A conservative global Lipschitz constant for distance is the maximum possible
+    # closing rate, bounded by the sum of the two maximum speeds. The default path
+    # tightens this per interval using the known heading profiles, but the simple global
+    # bound is retained as an opt-out option for debugging and comparison.
+    global_lipschitz_mps = a_max_speed_mps + b_max_speed_mps
+
+    # Optional robustness buffer for speed variation during active turns. This keeps the
+    # geometry and certification logic unchanged and instead inflates the required
+    # threshold by a horizon-wide conservative margin.
+    turn_speed_schedule_buffer_m = _turn_speed_schedule_buffer_m(
+        heading0_deg=a_heading0_deg,
+        target_heading_deg=a_target_heading_deg,
+        turn_rate_deg_sec=a_turn_rate_deg_sec,
+        projection_time_s=projection_time_s,
+        turn_speed_schedule_uncertainty_kt=turn_speed_schedule_uncertainty_kt,
+    ) + _turn_speed_schedule_buffer_m(
+        heading0_deg=b_heading0_deg,
+        target_heading_deg=b_target_heading_deg,
+        turn_rate_deg_sec=b_turn_rate_deg_sec,
+        projection_time_s=projection_time_s,
+        turn_speed_schedule_uncertainty_kt=turn_speed_schedule_uncertainty_kt,
+    )
+    effective_separation_threshold_m = separation_threshold_m + turn_speed_schedule_buffer_m
+
+    if projection_time_s <= 0.0:
+        min_dist_now = float(np.linalg.norm(rel_pos0))
+        return min_dist_now >= separation_threshold_m, min_dist_now, 0.0
+
+    if min_cert_interval_s <= 0.0:
+        min_cert_interval_s = TURN_TIME_CERT_MIN_INTERVAL_S
+
+    # Always check the horizon endpoints explicitly before doing any interval logic.
+    start_dist_m = float(np.linalg.norm(rel_pos0))
+    if start_dist_m < separation_threshold_m:
+        return False, start_dist_m, 0.0
+
+    end_dist_m = _min_distance_to_relative_hull_at_time(
+        rel_pos0=rel_pos0,
+        a_heading0_deg=a_heading0_deg,
+        a_target_heading_deg=a_target_heading_deg,
+        a_turn_rate_deg_sec=a_turn_rate_deg_sec,
+        a_min_speed_mps=a_min_speed_mps,
+        a_max_speed_mps=a_max_speed_mps,
+        b_heading0_deg=b_heading0_deg,
+        b_target_heading_deg=b_target_heading_deg,
+        b_turn_rate_deg_sec=b_turn_rate_deg_sec,
+        b_min_speed_mps=b_min_speed_mps,
+        b_max_speed_mps=b_max_speed_mps,
+        t_s=projection_time_s,
+    )
+
+    # These track the smallest sampled distance we have seen. They are useful both for
+    # diagnostics and for early conflict detection when a sampled midpoint is already bad.
+    best_sample_dist_m = start_dist_m
+    best_sample_time_s = 0.0
+    if end_dist_m < best_sample_dist_m:
+        best_sample_dist_m = end_dist_m
+        best_sample_time_s = projection_time_s
+
+    # If the whole horizon already certifies as safe from the endpoint distances, we can
+    # return immediately without any subdivision.
+    initial_lower_bound_m = _interval_distance_lower_bound(
+        start_dist_m=start_dist_m,
+        end_dist_m=end_dist_m,
+        lipschitz_mps=(
+            _interval_local_lipschitz_mps(
+                a_heading0_deg=a_heading0_deg,
+                a_target_heading_deg=a_target_heading_deg,
+                a_turn_rate_deg_sec=a_turn_rate_deg_sec,
+                a_min_speed_mps=a_min_speed_mps,
+                a_max_speed_mps=a_max_speed_mps,
+                b_heading0_deg=b_heading0_deg,
+                b_target_heading_deg=b_target_heading_deg,
+                b_turn_rate_deg_sec=b_turn_rate_deg_sec,
+                b_min_speed_mps=b_min_speed_mps,
+                b_max_speed_mps=b_max_speed_mps,
+                t0_s=0.0,
+                t1_s=projection_time_s,
+                global_lipschitz_mps=global_lipschitz_mps,
+            )
+            if use_interval_local_lipschitz
+            else global_lipschitz_mps
+        ),
+        dt_s=projection_time_s,
+    )
+    if initial_lower_bound_m >= effective_separation_threshold_m:
+        return True, best_sample_dist_m, best_sample_time_s
+
+    # Depth-first interval subdivision uses an explicit stack because Numba handles
+    # arrays well but not Python recursion.
+    stack_capacity = 4
+    span_s = projection_time_s
+    while span_s > min_cert_interval_s:
+        stack_capacity += 1
+        span_s *= 0.5
+
+    left_t_stack = np.empty(stack_capacity, dtype=np.float64)
+    right_t_stack = np.empty(stack_capacity, dtype=np.float64)
+    left_d_stack = np.empty(stack_capacity, dtype=np.float64)
+    right_d_stack = np.empty(stack_capacity, dtype=np.float64)
+
+    top = 0
+    left_t_stack[top] = 0.0
+    right_t_stack[top] = projection_time_s
+    left_d_stack[top] = start_dist_m
+    right_d_stack[top] = end_dist_m
+    top += 1
+
+    # If we fail to certify a tiny interval, report the most critical lower bound we saw
+    # rather than an arbitrary large sampled distance.
+    most_critical_lower_bound_m = initial_lower_bound_m
+    most_critical_time_s = 0.5 * projection_time_s
+
+    while top > 0:
+        top -= 1
+        left_t_s = left_t_stack[top]
+        right_t_s = right_t_stack[top]
+        left_dist_m = left_d_stack[top]
+        right_dist_m = right_d_stack[top]
+        dt_s = right_t_s - left_t_s
+        interval_lipschitz_mps = (
+            _interval_local_lipschitz_mps(
+                a_heading0_deg=a_heading0_deg,
+                a_target_heading_deg=a_target_heading_deg,
+                a_turn_rate_deg_sec=a_turn_rate_deg_sec,
+                a_min_speed_mps=a_min_speed_mps,
+                a_max_speed_mps=a_max_speed_mps,
+                b_heading0_deg=b_heading0_deg,
+                b_target_heading_deg=b_target_heading_deg,
+                b_turn_rate_deg_sec=b_turn_rate_deg_sec,
+                b_min_speed_mps=b_min_speed_mps,
+                b_max_speed_mps=b_max_speed_mps,
+                t0_s=left_t_s,
+                t1_s=right_t_s,
+                global_lipschitz_mps=global_lipschitz_mps,
+            )
+            if use_interval_local_lipschitz
+            else global_lipschitz_mps
+        )
+
+        interval_lower_bound_m = _interval_distance_lower_bound(
+            start_dist_m=left_dist_m,
+            end_dist_m=right_dist_m,
+            lipschitz_mps=interval_lipschitz_mps,
+            dt_s=dt_s,
+        )
+        if interval_lower_bound_m < most_critical_lower_bound_m:
+            most_critical_lower_bound_m = interval_lower_bound_m
+            most_critical_time_s = 0.5 * (left_t_s + right_t_s)
+
+        # This whole interval is certified safe; no need to look inside it.
+        if interval_lower_bound_m >= effective_separation_threshold_m:
+            continue
+
+        # At the minimum certification width we stop refining. If the interval still
+        # cannot be certified, we conservatively report it as potentially unsafe.
+        if dt_s <= min_cert_interval_s:
+            if best_sample_dist_m < separation_threshold_m:
+                return False, best_sample_dist_m, best_sample_time_s
+            return False, most_critical_lower_bound_m, most_critical_time_s
+
+        # Sample the midpoint to tighten both halves of the interval. If the midpoint
+        # itself is already within the threshold, we have a direct witness of conflict.
+        mid_t_s = 0.5 * (left_t_s + right_t_s)
+        mid_dist_m = _min_distance_to_relative_hull_at_time(
+            rel_pos0=rel_pos0,
+            a_heading0_deg=a_heading0_deg,
+            a_target_heading_deg=a_target_heading_deg,
+            a_turn_rate_deg_sec=a_turn_rate_deg_sec,
+            a_min_speed_mps=a_min_speed_mps,
+            a_max_speed_mps=a_max_speed_mps,
+            b_heading0_deg=b_heading0_deg,
+            b_target_heading_deg=b_target_heading_deg,
+            b_turn_rate_deg_sec=b_turn_rate_deg_sec,
+            b_min_speed_mps=b_min_speed_mps,
+            b_max_speed_mps=b_max_speed_mps,
+            t_s=mid_t_s,
+        )
+        if mid_dist_m < best_sample_dist_m:
+            best_sample_dist_m = mid_dist_m
+            best_sample_time_s = mid_t_s
+
+        if mid_dist_m < separation_threshold_m:
+            return False, best_sample_dist_m, best_sample_time_s
+
+        # Push the two child intervals. DFS keeps memory small and tends to find nearby
+        # conflicts quickly once an interval starts looking critical.
+        left_t_stack[top] = mid_t_s
+        right_t_stack[top] = right_t_s
+        left_d_stack[top] = mid_dist_m
+        right_d_stack[top] = right_dist_m
+        top += 1
+
+        left_t_stack[top] = left_t_s
+        right_t_stack[top] = mid_t_s
+        left_d_stack[top] = left_dist_m
+        right_d_stack[top] = mid_dist_m
+        top += 1
+
+    return True, best_sample_dist_m, best_sample_time_s
+
+
+@numba.njit(cache=True, fastmath=True)
 def catch_up_projection_interval_with_turns(
     a_lat: float,
     a_lon: float,
@@ -1215,230 +1461,21 @@ def catch_up_projection_interval_with_turns(
     point encountered during the search. The optional turn-speed-schedule buffer is
     applied by inflating the threshold, not by changing the reachable-set geometry.
     """
-    a_turn_angle_deg = heading_diff(a_heading0_deg, a_target_heading_deg)
-    b_turn_angle_deg = heading_diff(b_heading0_deg, b_target_heading_deg)
-    a_is_turning = abs(a_turn_angle_deg) >= TURN_HEADING_EPS_DEG and abs(a_turn_rate_deg_sec) > TURN_RATE_EPS_DEG_PER_S
-    b_is_turning = abs(b_turn_angle_deg) >= TURN_HEADING_EPS_DEG and abs(b_turn_rate_deg_sec) > TURN_RATE_EPS_DEG_PER_S
-
-    if not a_is_turning and not b_is_turning:
-        return catch_up_projection_interval(
-            a_lat=a_lat,
-            a_lon=a_lon,
-            a_heading=a_target_heading_deg,
-            a_speed_kt=a_speed_kt,
-            b_lat=b_lat,
-            b_lon=b_lon,
-            b_heading=b_target_heading_deg,
-            b_speed_kt=b_speed_kt,
-            separation_threshold_m=separation_threshold_m,
-            speed_diff_kt=speed_diff_kt,
-            projection_time_s=projection_time_s,
-        )
-
-    # Convert the speed envelope once up front; all later geometry is done in metres and
-    # seconds.
-    a_min_speed_mps = max((a_speed_kt - speed_diff_kt), 0.0) * KT_TO_MPS
-    a_max_speed_mps = (a_speed_kt + speed_diff_kt) * KT_TO_MPS
-    b_min_speed_mps = max((b_speed_kt - speed_diff_kt), 0.0) * KT_TO_MPS
-    b_max_speed_mps = (b_speed_kt + speed_diff_kt) * KT_TO_MPS
-
-    # Relative position is always represented as A minus B in the local tangent plane.
     rel_pos0 = -latlon_to_local_xy(b_lat, b_lon, ref_lat=a_lat, ref_lon=a_lon)
-
-    # A conservative global Lipschitz constant for distance is the maximum possible
-    # closing rate, bounded by the sum of the two maximum speeds. The default path
-    # tightens this per interval using the known heading profiles, but the simple global
-    # bound is retained as an opt-out option for debugging and comparison.
-    global_lipschitz_mps = a_max_speed_mps + b_max_speed_mps
-
-    # Optional robustness buffer for speed variation during active turns. This keeps the
-    # geometry and certification logic unchanged and instead inflates the required
-    # threshold by a horizon-wide conservative margin.
-    turn_speed_schedule_buffer_m = _turn_speed_schedule_buffer_m(
-        heading0_deg=a_heading0_deg,
-        target_heading_deg=a_target_heading_deg,
-        turn_rate_deg_sec=a_turn_rate_deg_sec,
-        projection_time_s=projection_time_s,
-        turn_speed_schedule_uncertainty_kt=turn_speed_schedule_uncertainty_kt,
-    ) + _turn_speed_schedule_buffer_m(
-        heading0_deg=b_heading0_deg,
-        target_heading_deg=b_target_heading_deg,
-        turn_rate_deg_sec=b_turn_rate_deg_sec,
-        projection_time_s=projection_time_s,
-        turn_speed_schedule_uncertainty_kt=turn_speed_schedule_uncertainty_kt,
-    )
-    effective_separation_threshold_m = separation_threshold_m + turn_speed_schedule_buffer_m
-
-    if projection_time_s <= 0.0:
-        min_dist_now = float(np.linalg.norm(rel_pos0))
-        return min_dist_now >= separation_threshold_m, min_dist_now, 0.0
-
-    # Always check the horizon endpoints explicitly before doing any interval logic.
-    start_dist_m = float(np.linalg.norm(rel_pos0))
-    if start_dist_m < separation_threshold_m:
-        return False, start_dist_m, 0.0
-
-    end_dist_m = _min_distance_to_relative_hull_at_time(
+    return _catch_up_projection_interval_with_turns_local(
         rel_pos0=rel_pos0,
         a_heading0_deg=a_heading0_deg,
         a_target_heading_deg=a_target_heading_deg,
+        a_speed_kt=a_speed_kt,
         a_turn_rate_deg_sec=a_turn_rate_deg_sec,
-        a_min_speed_mps=a_min_speed_mps,
-        a_max_speed_mps=a_max_speed_mps,
         b_heading0_deg=b_heading0_deg,
         b_target_heading_deg=b_target_heading_deg,
+        b_speed_kt=b_speed_kt,
         b_turn_rate_deg_sec=b_turn_rate_deg_sec,
-        b_min_speed_mps=b_min_speed_mps,
-        b_max_speed_mps=b_max_speed_mps,
-        t_s=projection_time_s,
+        separation_threshold_m=separation_threshold_m,
+        speed_diff_kt=speed_diff_kt,
+        projection_time_s=projection_time_s,
+        use_interval_local_lipschitz=use_interval_local_lipschitz,
+        turn_speed_schedule_uncertainty_kt=turn_speed_schedule_uncertainty_kt,
+        min_cert_interval_s=TURN_TIME_CERT_MIN_INTERVAL_S,
     )
-
-    # These track the smallest sampled distance we have seen. They are useful both for
-    # diagnostics and for early conflict detection when a sampled midpoint is already bad.
-    best_sample_dist_m = start_dist_m
-    best_sample_time_s = 0.0
-    if end_dist_m < best_sample_dist_m:
-        best_sample_dist_m = end_dist_m
-        best_sample_time_s = projection_time_s
-
-    # If the whole horizon already certifies as safe from the endpoint distances, we can
-    # return immediately without any subdivision.
-    initial_lower_bound_m = _interval_distance_lower_bound(
-        start_dist_m=start_dist_m,
-        end_dist_m=end_dist_m,
-        lipschitz_mps=(
-            _interval_local_lipschitz_mps(
-                a_heading0_deg=a_heading0_deg,
-                a_target_heading_deg=a_target_heading_deg,
-                a_turn_rate_deg_sec=a_turn_rate_deg_sec,
-                a_min_speed_mps=a_min_speed_mps,
-                a_max_speed_mps=a_max_speed_mps,
-                b_heading0_deg=b_heading0_deg,
-                b_target_heading_deg=b_target_heading_deg,
-                b_turn_rate_deg_sec=b_turn_rate_deg_sec,
-                b_min_speed_mps=b_min_speed_mps,
-                b_max_speed_mps=b_max_speed_mps,
-                t0_s=0.0,
-                t1_s=projection_time_s,
-                global_lipschitz_mps=global_lipschitz_mps,
-            )
-            if use_interval_local_lipschitz
-            else global_lipschitz_mps
-        ),
-        dt_s=projection_time_s,
-    )
-    if initial_lower_bound_m >= effective_separation_threshold_m:
-        return True, best_sample_dist_m, best_sample_time_s
-
-    # Depth-first interval subdivision uses an explicit stack because Numba handles
-    # arrays well but not Python recursion.
-    stack_capacity = 4
-    span_s = projection_time_s
-    while span_s > TURN_TIME_CERT_MIN_INTERVAL_S:
-        stack_capacity += 1
-        span_s *= 0.5
-
-    left_t_stack = np.empty(stack_capacity, dtype=np.float64)
-    right_t_stack = np.empty(stack_capacity, dtype=np.float64)
-    left_d_stack = np.empty(stack_capacity, dtype=np.float64)
-    right_d_stack = np.empty(stack_capacity, dtype=np.float64)
-
-    top = 0
-    left_t_stack[top] = 0.0
-    right_t_stack[top] = projection_time_s
-    left_d_stack[top] = start_dist_m
-    right_d_stack[top] = end_dist_m
-    top += 1
-
-    # If we fail to certify a tiny interval, report the most critical lower bound we saw
-    # rather than an arbitrary large sampled distance.
-    most_critical_lower_bound_m = initial_lower_bound_m
-    most_critical_time_s = 0.5 * projection_time_s
-
-    while top > 0:
-        top -= 1
-        left_t_s = left_t_stack[top]
-        right_t_s = right_t_stack[top]
-        left_dist_m = left_d_stack[top]
-        right_dist_m = right_d_stack[top]
-        dt_s = right_t_s - left_t_s
-        interval_lipschitz_mps = (
-            _interval_local_lipschitz_mps(
-                a_heading0_deg=a_heading0_deg,
-                a_target_heading_deg=a_target_heading_deg,
-                a_turn_rate_deg_sec=a_turn_rate_deg_sec,
-                a_min_speed_mps=a_min_speed_mps,
-                a_max_speed_mps=a_max_speed_mps,
-                b_heading0_deg=b_heading0_deg,
-                b_target_heading_deg=b_target_heading_deg,
-                b_turn_rate_deg_sec=b_turn_rate_deg_sec,
-                b_min_speed_mps=b_min_speed_mps,
-                b_max_speed_mps=b_max_speed_mps,
-                t0_s=left_t_s,
-                t1_s=right_t_s,
-                global_lipschitz_mps=global_lipschitz_mps,
-            )
-            if use_interval_local_lipschitz
-            else global_lipschitz_mps
-        )
-
-        interval_lower_bound_m = _interval_distance_lower_bound(
-            start_dist_m=left_dist_m,
-            end_dist_m=right_dist_m,
-            lipschitz_mps=interval_lipschitz_mps,
-            dt_s=dt_s,
-        )
-        if interval_lower_bound_m < most_critical_lower_bound_m:
-            most_critical_lower_bound_m = interval_lower_bound_m
-            most_critical_time_s = 0.5 * (left_t_s + right_t_s)
-
-        # This whole interval is certified safe; no need to look inside it.
-        if interval_lower_bound_m >= effective_separation_threshold_m:
-            continue
-
-        # At the minimum certification width we stop refining. If the interval still
-        # cannot be certified, we conservatively report it as potentially unsafe.
-        if dt_s <= TURN_TIME_CERT_MIN_INTERVAL_S:
-            if best_sample_dist_m < separation_threshold_m:
-                return False, best_sample_dist_m, best_sample_time_s
-            return False, most_critical_lower_bound_m, most_critical_time_s
-
-        # Sample the midpoint to tighten both halves of the interval. If the midpoint
-        # itself is already within the threshold, we have a direct witness of conflict.
-        mid_t_s = 0.5 * (left_t_s + right_t_s)
-        mid_dist_m = _min_distance_to_relative_hull_at_time(
-            rel_pos0=rel_pos0,
-            a_heading0_deg=a_heading0_deg,
-            a_target_heading_deg=a_target_heading_deg,
-            a_turn_rate_deg_sec=a_turn_rate_deg_sec,
-            a_min_speed_mps=a_min_speed_mps,
-            a_max_speed_mps=a_max_speed_mps,
-            b_heading0_deg=b_heading0_deg,
-            b_target_heading_deg=b_target_heading_deg,
-            b_turn_rate_deg_sec=b_turn_rate_deg_sec,
-            b_min_speed_mps=b_min_speed_mps,
-            b_max_speed_mps=b_max_speed_mps,
-            t_s=mid_t_s,
-        )
-        if mid_dist_m < best_sample_dist_m:
-            best_sample_dist_m = mid_dist_m
-            best_sample_time_s = mid_t_s
-
-        if mid_dist_m < separation_threshold_m:
-            return False, best_sample_dist_m, best_sample_time_s
-
-        # Push the two child intervals. DFS keeps memory small and tends to find nearby
-        # conflicts quickly once an interval starts looking critical.
-        left_t_stack[top] = mid_t_s
-        right_t_stack[top] = right_t_s
-        left_d_stack[top] = mid_dist_m
-        right_d_stack[top] = right_dist_m
-        top += 1
-
-        left_t_stack[top] = left_t_s
-        right_t_stack[top] = mid_t_s
-        left_d_stack[top] = left_dist_m
-        right_d_stack[top] = mid_dist_m
-        top += 1
-
-    return True, best_sample_dist_m, best_sample_time_s

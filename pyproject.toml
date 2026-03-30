@@ -1,23 +1,30 @@
 [project]
-name = "geometric_safety"
-version = "0.1.0"
-description = "Geometric reachability-based safety filtering for air traffic control"
-requires-python = ">=3.13,<3.14"
-dependencies = [
-    "matplotlib>=3.10.8",
-    "numba>=0.64.0",
-    "numpy>=2.4.3",
-    "scipy>=1.17.1",
+authors = [
+  {name = "George De Ath", email = "g.de.ath@exeter.ac.uk"},
 ]
+dependencies = [
+  "matplotlib>=3.10.8",
+  "numba>=0.64.0",
+  "numpy>=2.4.3",
+  "scipy>=1.17.1",
+]
+description = "Geometric reachability-based safety filtering for air traffic control"
+license = "MIT"
+name = "geometric_safety"
+requires-python = ">=3.13,<3.14"
+version = "0.1.0"
+
+[project.urls]
+Repository = "https://github.com/project-bluebird/geometric_safety"
 
 [dependency-groups]
 apps = ["fastapi[all]>=0.120.4"]
 dev = [
-    "httpx>=0.28.1",
-    "jupyter>=1.1.1",
-    "pytest>=9.0.2",
-    "ruff>=0.15.5",
-    "ty>=0.0.21",
+  "httpx>=0.28.1",
+  "jupyter>=1.1.1",
+  "pytest>=9.0.2",
+  "ruff>=0.15.5",
+  "ty>=0.0.21",
 ]
 
 [build-system]
@@ -40,37 +47,38 @@ target-version = "py313"
 
 [tool.ruff.lint]
 ignore = [
-    "ANN401",
-    "B905",
-    "PTH123",
+  "ANN401",
+  "B905",
+  "PTH123",
 ]
 select = [
-    "E",
-    "F",
-    "I",
-    "UP",
-    "B",
-    "SIM",
-    "PD",
-    "W",
-    "ANN",
-    "ASYNC",
-    "A",
-    "C4",
-    "ISC",
-    "ICN",
-    "PT",
-    "RET",
-    "ARG",
-    "R",
-    "PERF",
-    "RUF",
-    "PIE",
-    "FURB",
-    "PTH",
+  "E",
+  "F",
+  "I",
+  "UP",
+  "B",
+  "SIM",
+  "PD",
+  "W",
+  "ANN",
+  "ASYNC",
+  "A",
+  "C4",
+  "ISC",
+  "ICN",
+  "PT",
+  "RET",
+  "ARG",
+  "R",
+  "PERF",
+  "RUF",
+  "PIE",
+  "FURB",
+  "PTH",
 ]
 
 [tool.ruff.lint.per-file-ignores]
+"paper/tests/**" = ["ANN", "ARG", "RUF059"]
 "tests/**" = ["ANN", "ARG", "RUF059"]
 
 [tool.ruff.lint.isort]
