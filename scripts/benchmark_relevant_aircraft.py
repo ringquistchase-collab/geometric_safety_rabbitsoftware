@@ -5,9 +5,6 @@ Benchmark isolated CUPI (catch-up projection interval) timings.
 Measures warm-path latency of `catch_up_projection_interval_with_turns` across a few
 representative scenarios and a random mixed-turn sweep.
 
-Agent integration profiling (--mode agent) lives in the Falcon repository, which
-consumes geometric_safety as a dependency.
-
 Run with:
     uv run python scripts/benchmark_relevant_aircraft.py
     uv run python scripts/benchmark_relevant_aircraft.py --random-cases 5000

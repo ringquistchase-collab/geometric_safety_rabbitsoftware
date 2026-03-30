@@ -20,8 +20,7 @@ Two solver variants:
   Uses exact fixed-time hull evaluations with interval
   certification in time.
 
-The solver uses only numpy and numba (no ATC domain dependencies),
-making it reusable outside Falcon.
+The solver uses only numpy and numba (no ATC domain dependencies).
 
 ## Installation
 
