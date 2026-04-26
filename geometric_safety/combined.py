@@ -1,0 +1,283 @@
+"""Combined lateral and vertical safety checks."""
+
+import math
+
+import numba
+
+from geometric_safety.relevant_aircraft import (
+    TURN_SPEED_SCHEDULE_UNCERTAINTY_KT_DEFAULT,
+    TURN_USE_INTERVAL_LOCAL_LIPSCHITZ_DEFAULT,
+    catch_up_projection_interval,
+    catch_up_projection_interval_with_turns,
+)
+from geometric_safety.vertical import (
+    DEFAULT_VERTICAL_RATE_FPM,
+    DEFAULT_VERTICAL_SEPARATION_FL,
+    VERTICAL_OVERLAP_NEVER_RESOLVES_S,
+    time_to_vertical_overlap_resolution,
+)
+
+
+@numba.njit(cache=True, fastmath=True)
+def _combined_projection_horizon_s(projection_time_s: float, vertical_resolution_time_s: float) -> float:
+    """Return the lateral horizon that must remain clear before vertical resolution."""
+    # If vertical never resolves, the lateral solver has to certify the whole requested
+    # projection window. Otherwise it only needs to certify up to vertical resolution.
+    if vertical_resolution_time_s == VERTICAL_OVERLAP_NEVER_RESOLVES_S:
+        return projection_time_s
+    if vertical_resolution_time_s < projection_time_s:
+        return vertical_resolution_time_s
+    return projection_time_s
+
+
+@numba.njit(cache=True, fastmath=True)
+def catch_up_projection_interval_with_vertical(
+    a_lat: float,
+    a_lon: float,
+    a_heading: float,
+    a_speed_kt: float,
+    a_current_fl: float,
+    a_selected_fl: float,
+    b_lat: float,
+    b_lon: float,
+    b_heading: float,
+    b_speed_kt: float,
+    b_current_fl: float,
+    b_selected_fl: float,
+    separation_threshold_m: float,
+    speed_diff_kt: float,
+    projection_time_s: float,
+    vertical_rate_fpm: float = DEFAULT_VERTICAL_RATE_FPM,
+    required_vertical_gap_fl: float = DEFAULT_VERTICAL_SEPARATION_FL,
+) -> tuple[bool, float, float, float]:
+    """
+    Evaluate straight-line lateral safety with an independent vertical overlap check.
+
+    The vertical model returns the first time at which the remaining cleared-to-selected
+    level bands are separated by `required_vertical_gap_fl`. The lateral solver is then
+    only required to certify the interval before that vertical resolution time. If the
+    bands are already resolved, the function returns safe without running the lateral
+    projection. If the bands never resolve, lateral safety is checked over the full
+    projection horizon and `vertical_resolution_time_s` is
+    `VERTICAL_OVERLAP_NEVER_RESOLVES_S`.
+
+    Parameters
+    ----------
+    a_lat, a_lon : float
+        Aircraft A current position.
+    a_heading : float
+        Aircraft A heading in degrees.
+    a_speed_kt : float
+        Aircraft A nominal speed in knots.
+    a_current_fl : float
+        Aircraft A current flight level.
+    a_selected_fl : float
+        Aircraft A selected flight level.
+    b_lat, b_lon : float
+        Aircraft B current position.
+    b_heading : float
+        Aircraft B heading in degrees.
+    b_speed_kt : float
+        Aircraft B nominal speed in knots.
+    b_current_fl : float
+        Aircraft B current flight level.
+    b_selected_fl : float
+        Aircraft B selected flight level.
+    separation_threshold_m : float
+        Required lateral spacing in metres.
+    speed_diff_kt : float
+        Symmetric lateral speed uncertainty in knots.
+    projection_time_s : float
+        Total projection horizon in seconds.
+    vertical_rate_fpm : float, optional
+        Climb/descent rate in feet per minute, used for both aircraft.
+    required_vertical_gap_fl : float, optional
+        Required gap between the two remaining vertical bands, in flight levels.
+
+    Returns
+    -------
+    tuple[bool, float, float, float]
+        `(is_safe, lateral_min_distance_m, lateral_closest_time_s,
+        vertical_resolution_time_s)`.
+
+        `vertical_resolution_time_s` is the first time at which the vertical bands are
+        resolved, or `VERTICAL_OVERLAP_NEVER_RESOLVES_S` if they never resolve.
+
+    Notes
+    -----
+    The vertical and lateral checks remain separate. The vertical model first determines
+    when cleared-to-selected level bands resolve; the straight-line lateral solver then
+    certifies only the period before that time. If the bands never resolve, the full
+    lateral projection horizon is checked.
+    """
+    # Work out the independent vertical timing first. This is the gate that decides
+    # whether the lateral check can be shortened or skipped altogether.
+    vertical_resolution_time_s = time_to_vertical_overlap_resolution(
+        a_current_fl=a_current_fl,
+        a_selected_fl=a_selected_fl,
+        b_current_fl=b_current_fl,
+        b_selected_fl=b_selected_fl,
+        vertical_rate_fpm=vertical_rate_fpm,
+        required_gap_fl=required_vertical_gap_fl,
+    )
+
+    # If the bands are already distinct by the required gap, the pair is vertically
+    # safe from the start and lateral geometry cannot make this combined check unsafe.
+    if vertical_resolution_time_s == 0.0:
+        return True, math.inf, 0.0, vertical_resolution_time_s
+
+    # Otherwise ask the existing straight-line lateral solver only about the period
+    # before vertical resolution. If vertical never resolves, this becomes the full
+    # projection horizon.
+    lateral_horizon_s = _combined_projection_horizon_s(projection_time_s, vertical_resolution_time_s)
+    lateral_is_separated, min_distance_m, closest_time_s = catch_up_projection_interval(
+        a_lat=a_lat,
+        a_lon=a_lon,
+        a_heading=a_heading,
+        a_speed_kt=a_speed_kt,
+        b_lat=b_lat,
+        b_lon=b_lon,
+        b_heading=b_heading,
+        b_speed_kt=b_speed_kt,
+        separation_threshold_m=separation_threshold_m,
+        speed_diff_kt=speed_diff_kt,
+        projection_time_s=lateral_horizon_s,
+    )
+    return lateral_is_separated, min_distance_m, closest_time_s, vertical_resolution_time_s
+
+
+@numba.njit(cache=True, fastmath=True)
+def catch_up_projection_interval_with_turns_and_vertical(
+    a_lat: float,
+    a_lon: float,
+    a_heading0_deg: float,
+    a_target_heading_deg: float,
+    a_speed_kt: float,
+    a_turn_rate_deg_sec: float,
+    a_current_fl: float,
+    a_selected_fl: float,
+    b_lat: float,
+    b_lon: float,
+    b_heading0_deg: float,
+    b_target_heading_deg: float,
+    b_speed_kt: float,
+    b_turn_rate_deg_sec: float,
+    b_current_fl: float,
+    b_selected_fl: float,
+    separation_threshold_m: float,
+    speed_diff_kt: float,
+    projection_time_s: float,
+    vertical_rate_fpm: float = DEFAULT_VERTICAL_RATE_FPM,
+    required_vertical_gap_fl: float = DEFAULT_VERTICAL_SEPARATION_FL,
+    use_interval_local_lipschitz: bool = TURN_USE_INTERVAL_LOCAL_LIPSCHITZ_DEFAULT,
+    turn_speed_schedule_uncertainty_kt: float = TURN_SPEED_SCHEDULE_UNCERTAINTY_KT_DEFAULT,
+) -> tuple[bool, float, float, float]:
+    """
+    Evaluate turn-aware lateral safety with an independent vertical overlap check.
+
+    The same vertical shortcut is used as in
+    `catch_up_projection_interval_with_vertical`, but the lateral interval before
+    vertical resolution is certified with the turn-aware lateral solver.
+
+    Parameters
+    ----------
+    a_lat, a_lon : float
+        Aircraft A current position.
+    a_heading0_deg : float
+        Aircraft A current heading (start of turn, or straight heading).
+    a_target_heading_deg : float
+        Aircraft A heading after turn (== heading0 if straight).
+    a_speed_kt : float
+        Aircraft A nominal speed in knots.
+    a_turn_rate_deg_sec : float
+        Aircraft A rate of turn in deg/s; 0.0 if straight.
+    a_current_fl : float
+        Aircraft A current flight level.
+    a_selected_fl : float
+        Aircraft A selected flight level.
+    b_lat, b_lon : float
+        Aircraft B current position.
+    b_heading0_deg : float
+        Aircraft B current heading.
+    b_target_heading_deg : float
+        Aircraft B heading after turn.
+    b_speed_kt : float
+        Aircraft B nominal speed in knots.
+    b_turn_rate_deg_sec : float
+        Aircraft B rate of turn in deg/s; 0.0 if straight.
+    b_current_fl : float
+        Aircraft B current flight level.
+    b_selected_fl : float
+        Aircraft B selected flight level.
+    separation_threshold_m : float
+        Required lateral spacing in metres.
+    speed_diff_kt : float
+        Symmetric lateral speed uncertainty in knots.
+    projection_time_s : float
+        Total projection horizon in seconds.
+    vertical_rate_fpm : float, optional
+        Climb/descent rate in feet per minute, used for both aircraft.
+    required_vertical_gap_fl : float, optional
+        Required gap between the two remaining vertical bands, in flight levels.
+    use_interval_local_lipschitz : bool, optional
+        If True, use the tighter interval-local Lipschitz bound in the turn-aware
+        lateral solver. If False, use its simpler global bound.
+    turn_speed_schedule_uncertainty_kt : float, optional
+        Optional robustness assumption passed through to the turn-aware lateral solver.
+
+    Returns
+    -------
+    tuple[bool, float, float, float]
+        `(is_safe, lateral_min_distance_m, lateral_closest_time_s,
+        vertical_resolution_time_s)`.
+
+        `vertical_resolution_time_s` is the first time at which the vertical bands are
+        resolved, or `VERTICAL_OVERLAP_NEVER_RESOLVES_S` if they never resolve. The
+        lateral distance/time pair is reported from the shortened turn-aware lateral
+        horizon.
+
+    Notes
+    -----
+    This function preserves the turn-aware lateral solver's conservative time
+    certification. It only shortens the lateral horizon when the independent vertical
+    timing check proves that the level bands resolve earlier.
+    """
+    # The vertical calculation is intentionally shared with the fixed-heading wrapper;
+    # only the lateral certification method changes below.
+    vertical_resolution_time_s = time_to_vertical_overlap_resolution(
+        a_current_fl=a_current_fl,
+        a_selected_fl=a_selected_fl,
+        b_current_fl=b_current_fl,
+        b_selected_fl=b_selected_fl,
+        vertical_rate_fpm=vertical_rate_fpm,
+        required_gap_fl=required_vertical_gap_fl,
+    )
+
+    # Already-resolved vertical bands are a complete shortcut for the combined result,
+    # including turn-aware lateral cases.
+    if vertical_resolution_time_s == 0.0:
+        return True, math.inf, 0.0, vertical_resolution_time_s
+
+    # Certify turn-aware lateral separation only until vertical resolution. The turn
+    # solver remains conservative in time, so this preserves its existing safety meaning.
+    lateral_horizon_s = _combined_projection_horizon_s(projection_time_s, vertical_resolution_time_s)
+    lateral_is_separated, min_distance_m, closest_time_s = catch_up_projection_interval_with_turns(
+        a_lat=a_lat,
+        a_lon=a_lon,
+        a_heading0_deg=a_heading0_deg,
+        a_target_heading_deg=a_target_heading_deg,
+        a_speed_kt=a_speed_kt,
+        a_turn_rate_deg_sec=a_turn_rate_deg_sec,
+        b_lat=b_lat,
+        b_lon=b_lon,
+        b_heading0_deg=b_heading0_deg,
+        b_target_heading_deg=b_target_heading_deg,
+        b_speed_kt=b_speed_kt,
+        b_turn_rate_deg_sec=b_turn_rate_deg_sec,
+        separation_threshold_m=separation_threshold_m,
+        speed_diff_kt=speed_diff_kt,
+        projection_time_s=lateral_horizon_s,
+        use_interval_local_lipschitz=use_interval_local_lipschitz,
+        turn_speed_schedule_uncertainty_kt=turn_speed_schedule_uncertainty_kt,
+    )
+    return lateral_is_separated, min_distance_m, closest_time_s, vertical_resolution_time_s

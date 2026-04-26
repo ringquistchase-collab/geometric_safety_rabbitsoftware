@@ -10,7 +10,7 @@ with known positions, headings, speed bounds, and optional turn
 profiles, it determines whether they can possibly come within a
 separation threshold over a projection horizon.
 
-Two solver variants:
+Two lateral solver variants:
 
 - **Fixed heading** (`catch_up_projection_interval`) — exact
   geometric check for straight-line flight. Reduces the problem
@@ -21,6 +21,20 @@ Two solver variants:
   certification in time.
 
 The solver uses only numpy and numba (no ATC domain dependencies).
+
+### Additional vertical filtering
+
+The package also includes a vertical cleared-band timing check, which
+can be combined with the lateral solver. This vertical filtering is an
+engineering extension in the package, not part of the accompanying
+manuscript's CUPI method.
+
+Vertical filtering (`time_to_vertical_overlap_resolution`) assumes
+each aircraft climbs or descends from current flight level to selected
+flight level at a fixed parameterized rate. It returns the first time
+at which the two remaining cleared-to-selected level bands are
+separated by the required vertical gap. The defaults are 1,000 ft/min
+and 10 flight levels.
 
 ## Installation
 
@@ -59,6 +73,8 @@ uv sync
 
 ## Usage
 
+Turn-aware lateral check:
+
 ```python
 from geometric_safety import catch_up_projection_interval_with_turns
 
@@ -77,11 +93,66 @@ is_separated, min_distance_m, closest_time_s = (
 )
 ```
 
+Standalone vertical timing:
+
+```python
+from geometric_safety import (
+    VERTICAL_OVERLAP_NEVER_RESOLVES_S,
+    time_to_vertical_overlap_resolution,
+)
+
+vertical_resolution_time_s = time_to_vertical_overlap_resolution(
+    a_current_fl=100.0,
+    a_selected_fl=100.0,
+    b_current_fl=100.0,
+    b_selected_fl=120.0,
+    vertical_rate_fpm=1000.0,
+    required_gap_fl=10.0,
+)
+
+if vertical_resolution_time_s == VERTICAL_OVERLAP_NEVER_RESOLVES_S:
+    ...
+```
+
+Combined lateral and vertical check:
+
+```python
+from geometric_safety import catch_up_projection_interval_with_turns_and_vertical
+
+is_safe, min_distance_m, closest_time_s, vertical_resolution_time_s = (
+    catch_up_projection_interval_with_turns_and_vertical(
+        a_lat=51.0, a_lon=-1.0,
+        a_heading0_deg=0.0, a_target_heading_deg=270.0,
+        a_speed_kt=340.0, a_turn_rate_deg_sec=1.5,
+        a_current_fl=100.0, a_selected_fl=100.0,
+        b_lat=51.03, b_lon=-0.97,
+        b_heading0_deg=90.0, b_target_heading_deg=90.0,
+        b_speed_kt=340.0, b_turn_rate_deg_sec=0.0,
+        b_current_fl=100.0, b_selected_fl=120.0,
+        separation_threshold_m=9260.0,  # 5 NMI
+        speed_diff_kt=15.0,
+        projection_time_s=900.0,
+        vertical_rate_fpm=1000.0,
+        required_vertical_gap_fl=10.0,
+    )
+)
+```
+
+Use `catch_up_projection_interval_with_vertical` for the same combined
+logic with the fixed-heading lateral solver.
+
+For combined checks, lateral separation is only evaluated until the
+vertical overlap resolves. If the vertical bands are already distinct
+by the required gap, the result is safe immediately. If they never
+resolve, reported as `VERTICAL_OVERLAP_NEVER_RESOLVES_S` (`-1.0`),
+the lateral solver checks the full projection horizon.
+
 ## Tests
 
 ```bash
 uv run pytest tests/
 uv run pytest tests/test_relevant_aircraft_turns.py
+uv run pytest tests/test_vertical_safety.py
 uv run pytest tests/test_relevant_aircraft_app.py
 ```
 
