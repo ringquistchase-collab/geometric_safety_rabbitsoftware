@@ -1,7 +1,5 @@
 """Combined lateral and vertical safety checks."""
 
-import math
-
 import numba
 
 from geometric_safety.relevant_aircraft import (
@@ -56,10 +54,9 @@ def catch_up_projection_interval_with_vertical(
     The vertical model returns the first time at which the remaining cleared-to-selected
     level bands are separated by `required_vertical_gap_fl`. The lateral solver is then
     only required to certify the interval before that vertical resolution time. If the
-    bands are already resolved, the function returns safe without running the lateral
-    projection. If the bands never resolve, lateral safety is checked over the full
-    projection horizon and `vertical_resolution_time_s` is
-    `VERTICAL_OVERLAP_NEVER_RESOLVES_S`.
+    bands are already resolved, the function returns safe with lateral diagnostics at
+    `t=0`. If the bands never resolve, lateral safety is checked over the full projection
+    horizon and `vertical_resolution_time_s` is `VERTICAL_OVERLAP_NEVER_RESOLVES_S`.
 
     Parameters
     ----------
@@ -101,7 +98,9 @@ def catch_up_projection_interval_with_vertical(
         vertical_resolution_time_s)`.
 
         `vertical_resolution_time_s` is the first time at which the vertical bands are
-        resolved, or `VERTICAL_OVERLAP_NEVER_RESOLVES_S` if they never resolve.
+        resolved, or `VERTICAL_OVERLAP_NEVER_RESOLVES_S` if they never resolve. If the
+        vertical bands are already resolved, the lateral distance/time pair describes
+        the current geometry at `t=0`.
 
     Notes
     -----
@@ -122,9 +121,23 @@ def catch_up_projection_interval_with_vertical(
     )
 
     # If the bands are already distinct by the required gap, the pair is vertically
-    # safe from the start and lateral geometry cannot make this combined check unsafe.
+    # safe from the start. Still run the lateral solver over a zero-length horizon so
+    # the returned distance/time diagnostics describe the actual current geometry.
     if vertical_resolution_time_s == 0.0:
-        return True, math.inf, 0.0, vertical_resolution_time_s
+        _is_laterally_separated, min_distance_m, closest_time_s = catch_up_projection_interval(
+            a_lat=a_lat,
+            a_lon=a_lon,
+            a_heading=a_heading,
+            a_speed_kt=a_speed_kt,
+            b_lat=b_lat,
+            b_lon=b_lon,
+            b_heading=b_heading,
+            b_speed_kt=b_speed_kt,
+            separation_threshold_m=separation_threshold_m,
+            speed_diff_kt=speed_diff_kt,
+            projection_time_s=0.0,
+        )
+        return True, min_distance_m, closest_time_s, vertical_resolution_time_s
 
     # Otherwise ask the existing straight-line lateral solver only about the period
     # before vertical resolution. If vertical never resolves, this becomes the full
@@ -234,7 +247,7 @@ def catch_up_projection_interval_with_turns_and_vertical(
         `vertical_resolution_time_s` is the first time at which the vertical bands are
         resolved, or `VERTICAL_OVERLAP_NEVER_RESOLVES_S` if they never resolve. The
         lateral distance/time pair is reported from the shortened turn-aware lateral
-        horizon.
+        horizon, or from `t=0` when the vertical bands are already resolved.
 
     Notes
     -----
@@ -254,9 +267,28 @@ def catch_up_projection_interval_with_turns_and_vertical(
     )
 
     # Already-resolved vertical bands are a complete shortcut for the combined result,
-    # including turn-aware lateral cases.
+    # including turn-aware lateral cases. Evaluate t=0 lateral geometry for diagnostics.
     if vertical_resolution_time_s == 0.0:
-        return True, math.inf, 0.0, vertical_resolution_time_s
+        _is_laterally_separated, min_distance_m, closest_time_s = catch_up_projection_interval_with_turns(
+            a_lat=a_lat,
+            a_lon=a_lon,
+            a_heading0_deg=a_heading0_deg,
+            a_target_heading_deg=a_target_heading_deg,
+            a_speed_kt=a_speed_kt,
+            a_turn_rate_deg_sec=a_turn_rate_deg_sec,
+            b_lat=b_lat,
+            b_lon=b_lon,
+            b_heading0_deg=b_heading0_deg,
+            b_target_heading_deg=b_target_heading_deg,
+            b_speed_kt=b_speed_kt,
+            b_turn_rate_deg_sec=b_turn_rate_deg_sec,
+            separation_threshold_m=separation_threshold_m,
+            speed_diff_kt=speed_diff_kt,
+            projection_time_s=0.0,
+            use_interval_local_lipschitz=use_interval_local_lipschitz,
+            turn_speed_schedule_uncertainty_kt=turn_speed_schedule_uncertainty_kt,
+        )
+        return True, min_distance_m, closest_time_s, vertical_resolution_time_s
 
     # Certify turn-aware lateral separation only until vertical resolution. The turn
     # solver remains conservative in time, so this preserves its existing safety meaning.

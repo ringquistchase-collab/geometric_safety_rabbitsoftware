@@ -72,8 +72,22 @@ class TestVerticalOverlapResolution:
         assert resolution_s == pytest.approx(360.0)
 
     def test_rate_parameter_scales_time(self):
-        slow_resolution_s = time_to_vertical_overlap_resolution(100.0, 100.0, 100.0, 120.0, 500.0, 10.0)
-        fast_resolution_s = time_to_vertical_overlap_resolution(100.0, 100.0, 100.0, 120.0, 2000.0, 10.0)
+        slow_resolution_s = time_to_vertical_overlap_resolution(
+            a_current_fl=100.0,
+            a_selected_fl=100.0,
+            b_current_fl=100.0,
+            b_selected_fl=120.0,
+            vertical_rate_fpm=500.0,
+            required_gap_fl=10.0,
+        )
+        fast_resolution_s = time_to_vertical_overlap_resolution(
+            a_current_fl=100.0,
+            a_selected_fl=100.0,
+            b_current_fl=100.0,
+            b_selected_fl=120.0,
+            vertical_rate_fpm=2000.0,
+            required_gap_fl=10.0,
+        )
 
         assert slow_resolution_s == pytest.approx(120.0)
         assert fast_resolution_s == pytest.approx(30.0)
@@ -99,6 +113,26 @@ class TestVerticalOverlapResolution:
             required_gap_fl=10.0,
         )
         assert resolution_s == pytest.approx(VERTICAL_OVERLAP_NEVER_RESOLVES_S)
+
+    def test_negative_rate_is_treated_as_magnitude(self):
+        positive_rate_s = time_to_vertical_overlap_resolution(
+            a_current_fl=100.0,
+            a_selected_fl=100.0,
+            b_current_fl=100.0,
+            b_selected_fl=120.0,
+            vertical_rate_fpm=1000.0,
+            required_gap_fl=10.0,
+        )
+        negative_rate_s = time_to_vertical_overlap_resolution(
+            a_current_fl=100.0,
+            a_selected_fl=100.0,
+            b_current_fl=100.0,
+            b_selected_fl=120.0,
+            vertical_rate_fpm=-1000.0,
+            required_gap_fl=10.0,
+        )
+
+        assert negative_rate_s == pytest.approx(positive_rate_s)
 
 
 class TestCombinedSafety:
@@ -194,7 +228,7 @@ class TestCombinedSafety:
         )
 
         assert is_safe
-        assert math.isinf(min_distance_m)
+        assert min_distance_m == pytest.approx(0.0)
         assert closest_time_s == pytest.approx(0.0)
         assert vertical_time_s == pytest.approx(0.0)
 

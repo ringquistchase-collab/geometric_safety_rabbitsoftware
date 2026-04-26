@@ -16,10 +16,11 @@ VERTICAL_OVERLAP_NEVER_RESOLVES_S = -1.0
 
 @numba.njit(cache=True, fastmath=True)
 def _rate_fl_per_second(vertical_rate_fpm: float) -> float:
-    """Convert a climb/descent rate in feet per minute to flight levels per second."""
-    if vertical_rate_fpm <= 0.0:
+    """Convert a climb/descent rate magnitude in feet per minute to flight levels per second."""
+    rate_fpm = abs(vertical_rate_fpm)
+    if rate_fpm == 0.0:
         return 0.0
-    return vertical_rate_fpm / FT_PER_FL / SECONDS_PER_MINUTE
+    return rate_fpm / FT_PER_FL / SECONDS_PER_MINUTE
 
 
 @numba.njit(cache=True, fastmath=True)

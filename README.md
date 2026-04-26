@@ -143,9 +143,10 @@ logic with the fixed-heading lateral solver.
 
 For combined checks, lateral separation is only evaluated until the
 vertical overlap resolves. If the vertical bands are already distinct
-by the required gap, the result is safe immediately. If they never
-resolve, reported as `VERTICAL_OVERLAP_NEVER_RESOLVES_S` (`-1.0`),
-the lateral solver checks the full projection horizon.
+by the required gap, the result is safe immediately and the returned
+lateral distance/time describe the current geometry at `t=0`. If they
+never resolve, reported as `VERTICAL_OVERLAP_NEVER_RESOLVES_S`
+(`-1.0`), the lateral solver checks the full projection horizon.
 
 ## Tests
 
