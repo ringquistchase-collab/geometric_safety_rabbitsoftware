@@ -31,10 +31,13 @@ manuscript's CUPI method.
 
 Vertical filtering (`time_to_vertical_overlap_resolution`) assumes
 each aircraft climbs or descends from current flight level to selected
-flight level at a fixed parameterized rate. It returns the first time
-at which the two remaining cleared-to-selected level bands are
-separated by the required vertical gap. The defaults are 1,000 ft/min
-and 10 flight levels.
+flight level at the same fixed parameterized rate magnitude. Negative
+rates are treated as magnitudes; climb or descent direction comes from
+the current and selected levels. It returns the first time at which the
+two remaining cleared-to-selected level bands are separated by the
+required vertical gap. The defaults are 1,000 ft/min and 10 flight
+levels. When using the combined check as a safety filter, pass a
+conservative low vertical rate for the operation being modelled.
 
 ## Installation
 

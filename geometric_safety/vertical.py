@@ -40,7 +40,8 @@ def level_at_time_fl(current_fl: float, selected_fl: float, vertical_rate_fpm: f
     selected_fl : float
         Aircraft selected flight level.
     vertical_rate_fpm : float
-        Climb/descent rate in feet per minute.
+        Climb/descent rate magnitude in feet per minute. Negative values are
+        treated as magnitudes; direction comes from current and selected levels.
     t_s : float
         Elapsed time in seconds.
 
@@ -104,7 +105,8 @@ def vertical_band_gap_fl(
     b_selected_fl : float
         Aircraft B selected flight level.
     vertical_rate_fpm : float, optional
-        Climb/descent rate in feet per minute, used for both aircraft.
+        Climb/descent rate magnitude in feet per minute, used for both
+        aircraft. Negative values are treated as magnitudes.
     t_s : float, optional
         Elapsed time in seconds.
 
@@ -128,8 +130,8 @@ def vertical_bands_are_resolved(
     a_selected_fl: float,
     b_current_fl: float,
     b_selected_fl: float,
-    required_gap_fl: float = DEFAULT_VERTICAL_SEPARATION_FL,
     vertical_rate_fpm: float = DEFAULT_VERTICAL_RATE_FPM,
+    required_gap_fl: float = DEFAULT_VERTICAL_SEPARATION_FL,
     t_s: float = 0.0,
 ) -> bool:
     """
@@ -145,10 +147,11 @@ def vertical_bands_are_resolved(
         Aircraft B current flight level.
     b_selected_fl : float
         Aircraft B selected flight level.
+    vertical_rate_fpm : float, optional
+        Climb/descent rate magnitude in feet per minute, used for both
+        aircraft. Negative values are treated as magnitudes.
     required_gap_fl : float, optional
         Required gap between the two remaining vertical bands, in flight levels.
-    vertical_rate_fpm : float, optional
-        Climb/descent rate in feet per minute, used for both aircraft.
     t_s : float, optional
         Elapsed time in seconds.
 
@@ -251,7 +254,9 @@ def time_to_vertical_overlap_resolution(
     b_selected_fl : float
         Aircraft B selected flight level.
     vertical_rate_fpm : float, optional
-        Climb/descent rate in feet per minute, used for both aircraft.
+        Shared climb/descent rate magnitude in feet per minute, used for both
+        aircraft. Negative values are treated as magnitudes; direction comes
+        from each aircraft's current and selected levels.
     required_gap_fl : float, optional
         Required gap between the two remaining vertical bands, in flight levels.
 
@@ -267,6 +272,8 @@ def time_to_vertical_overlap_resolution(
     The calculation is closed form. Band edges are piecewise linear in time, and their
     slopes can only change when one aircraft reaches its selected level. The function
     therefore checks at most two linear intervals and both possible vertical orderings.
+    Because the same rate is used for both aircraft, callers using this as a safety
+    filter should pass a conservative low value for the operation being modelled.
     """
     if required_gap_fl < 0.0:
         required_gap_fl = 0.0
@@ -276,8 +283,8 @@ def time_to_vertical_overlap_resolution(
         a_selected_fl=a_selected_fl,
         b_current_fl=b_current_fl,
         b_selected_fl=b_selected_fl,
-        required_gap_fl=required_gap_fl,
         vertical_rate_fpm=vertical_rate_fpm,
+        required_gap_fl=required_gap_fl,
         t_s=0.0,
     ):
         return 0.0
@@ -333,17 +340,6 @@ def time_to_vertical_overlap_resolution(
         if a_above_crossing_s != VERTICAL_OVERLAP_NEVER_RESOLVES_S:
             return a_above_crossing_s
 
-    # After both aircraft have levelled, the remaining bands are fixed at their selected
-    # levels. If they are not resolved then, they never will be under this model.
-    if vertical_bands_are_resolved(
-        a_current_fl=a_current_fl,
-        a_selected_fl=a_selected_fl,
-        b_current_fl=b_current_fl,
-        b_selected_fl=b_selected_fl,
-        required_gap_fl=required_gap_fl,
-        vertical_rate_fpm=vertical_rate_fpm,
-        t_s=second_done_s,
-    ):
-        return second_done_s
-
+    # If neither linear interval crossed the required gap, both aircraft are level by
+    # `second_done_s` and the selected-level bands remain fixed from then on.
     return VERTICAL_OVERLAP_NEVER_RESOLVES_S

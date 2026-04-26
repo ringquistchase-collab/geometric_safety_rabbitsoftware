@@ -6,6 +6,7 @@ from geometric_safety import (
     VERTICAL_OVERLAP_NEVER_RESOLVES_S,
     catch_up_projection_interval_with_turns_and_vertical,
     catch_up_projection_interval_with_vertical,
+    level_at_time_fl,
     time_to_vertical_overlap_resolution,
     vertical_band_gap_fl,
     vertical_bands_are_resolved,
@@ -22,6 +23,9 @@ def _local_xy_to_latlon(east_m: float, north_m: float, ref_lat: float, ref_lon: 
 
 
 class TestVerticalOverlapResolution:
+    def test_level_at_time_accepts_rate_magnitude_from_public_api(self):
+        assert level_at_time_fl(100.0, 120.0, -1000.0, 60.0) == pytest.approx(110.0)
+
     def test_already_distinct_bands_return_zero(self):
         assert vertical_band_gap_fl(100.0, 100.0, 120.0, 120.0) == pytest.approx(20.0)
         assert vertical_bands_are_resolved(100.0, 100.0, 120.0, 120.0)

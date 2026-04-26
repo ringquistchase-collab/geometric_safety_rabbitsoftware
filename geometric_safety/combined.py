@@ -87,7 +87,8 @@ def catch_up_projection_interval_with_vertical(
     projection_time_s : float
         Total projection horizon in seconds.
     vertical_rate_fpm : float, optional
-        Climb/descent rate in feet per minute, used for both aircraft.
+        Shared climb/descent rate magnitude in feet per minute, used for both
+        aircraft. Negative values are treated as magnitudes.
     required_vertical_gap_fl : float, optional
         Required gap between the two remaining vertical bands, in flight levels.
 
@@ -107,7 +108,8 @@ def catch_up_projection_interval_with_vertical(
     The vertical and lateral checks remain separate. The vertical model first determines
     when cleared-to-selected level bands resolve; the straight-line lateral solver then
     certifies only the period before that time. If the bands never resolve, the full
-    lateral projection horizon is checked.
+    lateral projection horizon is checked. Callers using this as a safety filter should
+    pass a conservative low vertical rate for the operation being modelled.
     """
     # Work out the independent vertical timing first. This is the gate that decides
     # whether the lateral check can be shortened or skipped altogether.
@@ -229,7 +231,8 @@ def catch_up_projection_interval_with_turns_and_vertical(
     projection_time_s : float
         Total projection horizon in seconds.
     vertical_rate_fpm : float, optional
-        Climb/descent rate in feet per minute, used for both aircraft.
+        Shared climb/descent rate magnitude in feet per minute, used for both
+        aircraft. Negative values are treated as magnitudes.
     required_vertical_gap_fl : float, optional
         Required gap between the two remaining vertical bands, in flight levels.
     use_interval_local_lipschitz : bool, optional
@@ -253,7 +256,9 @@ def catch_up_projection_interval_with_turns_and_vertical(
     -----
     This function preserves the turn-aware lateral solver's conservative time
     certification. It only shortens the lateral horizon when the independent vertical
-    timing check proves that the level bands resolve earlier.
+    timing check proves that the level bands resolve earlier. Callers using this as a
+    safety filter should pass a conservative low vertical rate for the operation being
+    modelled.
     """
     # The vertical calculation is intentionally shared with the fixed-heading wrapper;
     # only the lateral certification method changes below.
