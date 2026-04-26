@@ -441,9 +441,9 @@ def render_existing_figures(
 def render_figure_set(
     output_dir: Path,
     *,
-    narrative: dict[str, dict[str, object]],
-    mixed_rows: list[dict[str, object]],
-    ablation_rows: list[dict[str, object]],
+    narrative: dict[str, dict[str, Any]],
+    mixed_rows: list[dict[str, Any]],
+    ablation_rows: list[dict[str, Any]],
     figure_formats: tuple[str, ...],
     manuscript_names: bool,
 ) -> None:
@@ -490,11 +490,11 @@ def validate_existing_run_summaries(loaded: list[dict[str, Any]]) -> None:
             raise ValueError(f"Config mismatch between existing runs: {loaded[0]['run_dir']} and {item['run_dir']}")
 
 
-def normalized_config(config: dict[str, object]) -> dict[str, object]:
+def normalized_config(config: dict[str, Any]) -> dict[str, Any]:
     return {key: value for key, value in config.items() if key != "seed"}
 
 
-def infer_profile_name(config: dict[str, object]) -> str:
+def infer_profile_name(config: dict[str, Any]) -> str:
     for name, sizes in SUITE_PROFILES.items():
         if (
             int(config["straight_n"]) == sizes["straight_n"]
@@ -529,7 +529,7 @@ def reconstruct_run_record_from_summary(summary: dict[str, Any]) -> dict[str, An
     }
 
 
-def reconstruct_straight_record(straight_summary: dict[str, object]) -> dict[str, object]:
+def reconstruct_straight_record(straight_summary: dict[str, Any]) -> dict[str, Any]:
     total_n = int(straight_summary["n"])
     nominal = straight_summary["nominal_proxy"]
     confusion = reconstruct_binary_confusion(
@@ -555,7 +555,7 @@ def reconstruct_straight_record(straight_summary: dict[str, object]) -> dict[str
     }
 
 
-def reconstruct_mixed_turn_record(mixed_summary: dict[str, object]) -> dict[str, object]:
+def reconstruct_mixed_turn_record(mixed_summary: dict[str, Any]) -> dict[str, Any]:
     total_n = int(mixed_summary["n"])
     eligible_n = int(mixed_summary["eligible_n"])
     proposed = reconstruct_binary_confusion(
@@ -604,9 +604,9 @@ def reconstruct_mixed_turn_record(mixed_summary: dict[str, object]) -> dict[str,
 
 
 def reconstruct_near_threshold_record(
-    near_threshold_summary: dict[str, object],
-    config: dict[str, object],
-) -> dict[str, object]:
+    near_threshold_summary: dict[str, Any],
+    config: dict[str, Any],
+) -> dict[str, Any]:
     default_row = next(
         row
         for row in near_threshold_summary["summary_rows"]
@@ -662,8 +662,10 @@ def reconstruct_binary_confusion(
         if unsafe_candidate is None and safe_candidate is None:
             continue
         if unsafe_candidate is None:
+            assert safe_candidate is not None
             unsafe_candidate = total_n - safe_candidate
         if safe_candidate is None:
+            assert unsafe_candidate is not None
             safe_candidate = total_n - unsafe_candidate
         if safe_candidate < 0 or unsafe_candidate < 0 or safe_candidate + unsafe_candidate != total_n:
             continue
@@ -717,7 +719,7 @@ def rates_match(count: int, denominator: int, rate: float) -> bool:
     return math.isclose(float(count) / float(denominator), rate, rel_tol=1e-12, abs_tol=1e-12)
 
 
-def confusion_counts(rows: list[dict[str, object]], reference_key: str, method_key: str) -> dict[str, int]:
+def confusion_counts(rows: list[dict[str, Any]], reference_key: str, method_key: str) -> dict[str, int]:
     false_safe_n = 0
     false_unsafe_n = 0
     disagreement_n = 0
@@ -835,7 +837,7 @@ def build_campaign_summary(
     }
 
 
-def build_campaign_rows(run_records: list[dict[str, Any]]) -> list[dict[str, object]]:
+def build_campaign_rows(run_records: list[dict[str, Any]]) -> list[dict[str, Any]]:
     rows = []
     for record in run_records:
         mixed = record["mixed_turn"]
@@ -872,7 +874,7 @@ def rule_of_three_upper_bound(failures: int, trials: int) -> float | None:
     return None
 
 
-def build_environment_summary(config: EvaluationConfig) -> dict[str, object]:
+def build_environment_summary(config: EvaluationConfig) -> dict[str, Any]:
     return {
         "python": sys.version.split()[0],
         "numpy": np.__version__,
@@ -885,7 +887,7 @@ def build_environment_summary(config: EvaluationConfig) -> dict[str, object]:
     }
 
 
-def build_table_1(config: EvaluationConfig) -> list[dict[str, object]]:
+def build_table_1(config: EvaluationConfig) -> list[dict[str, Any]]:
     return [
         {
             "section": "Encounter generation",
@@ -937,7 +939,7 @@ def build_table_1(config: EvaluationConfig) -> list[dict[str, object]]:
     ]
 
 
-def build_table_2(straight_summary: dict[str, object]) -> list[dict[str, object]]:
+def build_table_2(straight_summary: dict[str, Any]) -> list[dict[str, Any]]:
     nominal = straight_summary["nominal_proxy"]
     return [
         {"metric": "Oracle vs proposed agreement", "value": straight_summary["oracle_vs_proposed_agreement_rate"]},
@@ -949,7 +951,7 @@ def build_table_2(straight_summary: dict[str, object]) -> list[dict[str, object]
     ]
 
 
-def build_table_3(mixed_summary: dict[str, object]) -> list[dict[str, object]]:
+def build_table_3(mixed_summary: dict[str, Any]) -> list[dict[str, Any]]:
     rows = []
     for name in ("proposed", "nominal_proxy", "coarse_proxy"):
         entry = mixed_summary[name]
@@ -978,9 +980,9 @@ def build_table_4(
     *,
     kernel_runtime: dict[str, float],
     mixed_runtime: dict[str, float],
-    ablation_rows: list[dict[str, object]],
-    environment: dict[str, object],
-) -> list[dict[str, object]]:
+    ablation_rows: list[dict[str, Any]],
+    environment: dict[str, Any],
+) -> list[dict[str, Any]]:
     rows = [
         {"component": "Fixed-time kernel", **kernel_runtime},
         {"component": "Full solver broad sweep", **mixed_runtime},
@@ -1012,7 +1014,7 @@ def build_table_4(
     return rows
 
 
-def plot_crossing_scenario(path: Path, row: dict[str, object]) -> None:
+def plot_crossing_scenario(path: Path, row: dict[str, Any]) -> None:
     encounter = encounter_from_row(row)
     fig, ax = plt.subplots(figsize=(7, 6))
     draw_nominal_trajectories(ax, encounter)
@@ -1035,7 +1037,7 @@ def plot_crossing_scenario(path: Path, row: dict[str, object]) -> None:
     plt.close(fig)
 
 
-def plot_proxy_miss(path: Path, row: dict[str, object]) -> None:
+def plot_proxy_miss(path: Path, row: dict[str, Any]) -> None:
     encounter = encounter_from_row(row)
     fig, ax = plt.subplots(figsize=(7, 6))
     draw_nominal_trajectories(ax, encounter)
@@ -1054,7 +1056,7 @@ def plot_proxy_miss(path: Path, row: dict[str, object]) -> None:
     plt.close(fig)
 
 
-def plot_sampled_proxy_miss(path: Path, row: dict[str, object], *, sample_dt_s: float) -> None:
+def plot_sampled_proxy_miss(path: Path, row: dict[str, Any], *, sample_dt_s: float) -> None:
     encounter = encounter_from_row(row)
     center_s = float(row["reference_closest_time_s"])
     left_s = max(0.0, center_s - 18.0)
@@ -1122,7 +1124,7 @@ def plot_sampled_proxy_miss(path: Path, row: dict[str, object], *, sample_dt_s: 
     plt.close(fig)
 
 
-def plot_stress_maps(path: Path, rows: list[dict[str, object]]) -> None:
+def plot_stress_maps(path: Path, rows: list[dict[str, Any]]) -> None:
     fig, axes = plt.subplots(1, 2, figsize=(11.6, 4.8))
     plot_heatmap(
         ax=axes[0],
@@ -1167,7 +1169,7 @@ def plot_stress_maps(path: Path, rows: list[dict[str, object]]) -> None:
     plt.close(fig)
 
 
-def plot_ablation(path: Path, summary_rows: list[dict[str, object]]) -> None:
+def plot_ablation(path: Path, summary_rows: list[dict[str, Any]]) -> None:
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(11.6, 4.8), sharex=True)
     palette = {"local": "#1f4e79", "global": "#b55d1d"}
     for lipschitz_mode in ("local", "global"):
@@ -1262,13 +1264,13 @@ def nominal_path(encounter: Encounter, *, aircraft: str, times_s: np.ndarray) ->
 def plot_heatmap(
     *,
     ax: plt.Axes,
-    rows: list[dict[str, object]],
+    rows: list[dict[str, Any]],
     x_edges: tuple[float, ...],
     y_edges: tuple[float, ...],
-    x_getter: Callable[[dict[str, object]], float],
-    y_getter: Callable[[dict[str, object]], float],
-    mask: Callable[[dict[str, object]], bool],
-    value: Callable[[dict[str, object]], float | int],
+    x_getter: Callable[[dict[str, Any]], float],
+    y_getter: Callable[[dict[str, Any]], float],
+    mask: Callable[[dict[str, Any]], bool],
+    value: Callable[[dict[str, Any]], float | int],
     title: str,
     xlabel: str,
     ylabel: str,
@@ -1339,7 +1341,7 @@ def plot_heatmap(
     colorbar.ax.tick_params(labelsize=11)
 
 
-def encounter_from_row(row: dict[str, object]) -> Encounter:
+def encounter_from_row(row: dict[str, Any]) -> Encounter:
     return Encounter(
         rel_east_m=float(row["rel_east_m"]),
         rel_north_m=float(row["rel_north_m"]),
@@ -1438,7 +1440,7 @@ def read_json(path: Path) -> dict[str, Any]:
         return json.load(handle)
 
 
-def read_csv_rows(path: Path) -> list[dict[str, object]]:
+def read_csv_rows(path: Path) -> list[dict[str, Any]]:
     with path.open("r", encoding="utf-8", newline="") as handle:
         reader = csv.DictReader(handle)
         return [{key: coerce_csv_value(value) for key, value in row.items()} for row in reader]
@@ -1459,11 +1461,11 @@ def coerce_csv_value(value: str | None) -> object:
     return numeric
 
 
-def write_json(path: Path, payload: dict[str, object]) -> None:
+def write_json(path: Path, payload: dict[str, Any]) -> None:
     path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
 
 
-def write_csv(path: Path, rows: list[dict[str, object]]) -> None:
+def write_csv(path: Path, rows: list[dict[str, Any]]) -> None:
     if not rows:
         path.write_text("", encoding="utf-8")
         return

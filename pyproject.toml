@@ -3,9 +3,9 @@ authors = [
   {name = "George De Ath", email = "g.de.ath@exeter.ac.uk"},
 ]
 dependencies = [
-  "matplotlib>=3.10.8",
-  "numba>=0.64.0",
-  "numpy>=2.4.3",
+  "matplotlib>=3.10.9",
+  "numba>=0.65.1",
+  "numpy>=2.4.4",
   "scipy>=1.17.1",
 ]
 description = "Geometric reachability-based safety filtering for air traffic control"
@@ -18,13 +18,13 @@ version = "0.2.0"
 Repository = "https://github.com/project-bluebird/geometric_safety"
 
 [dependency-groups]
-apps = ["fastapi[all]>=0.120.4"]
+apps = ["fastapi[all]>=0.136.1"]
 dev = [
   "httpx>=0.28.1",
   "jupyter>=1.1.1",
-  "pytest>=9.0.2",
-  "ruff>=0.15.5",
-  "ty>=0.0.21",
+  "pytest>=9.0.3",
+  "ruff>=0.15.12",
+  "ty>=0.0.32",
 ]
 
 [build-system]
