@@ -177,7 +177,7 @@ def encounter_to_turn_kwargs(encounter: Encounter, ref_lat: float, ref_lon: floa
     }
 
 
-def encounter_to_row(encounter: Encounter) -> dict[str, float]:
+def encounter_to_row(encounter: Encounter) -> dict[str, Any]:
     """Serialize an encounter into a flat row."""
     row = asdict(encounter)
     row["max_turn_angle_deg"] = encounter.max_turn_angle_deg()
@@ -1050,7 +1050,7 @@ def build_refinement_times(
     return refined_times
 
 
-def outcome_to_row(prefix: str, outcome: MethodOutcome) -> dict[str, float]:
+def outcome_to_row(prefix: str, outcome: MethodOutcome) -> dict[str, Any]:
     """Flatten a method outcome into a row."""
     return {
         f"{prefix}_is_safe": int(outcome.is_safe),
