@@ -11,6 +11,7 @@ SECONDS_PER_MINUTE = 60.0
 DEFAULT_VERTICAL_RATE_FPM = 1000.0
 DEFAULT_VERTICAL_SEPARATION_FL = 10.0
 DEFAULT_VERTICAL_ROUNDING_FL = 10
+_ROUNDING_GRID_EPSILON_FL = 1.0e-9
 
 # A real resolution time is always non-negative, so a negative sentinel can represent
 # "never resolves" without relying on infinity semantics under Numba fast-math.
@@ -102,6 +103,18 @@ def _directional_compared_levels_fl(
 
 
 @numba.njit(cache=True, fastmath=True)
+def _rounded_lower_index(level_fl: float, rounded: int) -> int:
+    """Return the conservative rounded-grid index for the lower compared level."""
+    return math.ceil((level_fl - _ROUNDING_GRID_EPSILON_FL) / rounded)
+
+
+@numba.njit(cache=True, fastmath=True)
+def _rounded_higher_index(level_fl: float, rounded: int) -> int:
+    """Return the conservative rounded-grid index for the higher compared level."""
+    return math.floor((level_fl + _ROUNDING_GRID_EPSILON_FL) / rounded)
+
+
+@numba.njit(cache=True, fastmath=True)
 def _directional_band_gap_fl(
     a_current_fl: float,
     a_selected_fl: float,
@@ -124,10 +137,11 @@ def _directional_band_gap_fl(
     )
 
     # Rounding is deliberately conservative: close the tested gap before comparing it
-    # with the required separation. A non-positive step leaves exact FLs unchanged.
+    # with the required separation. The small grid epsilon avoids one-index flicker
+    # when floating-point arithmetic lands just beside a rounding boundary.
     if rounded > 0:
-        lower_level_fl = math.ceil(lower_level_fl / rounded) * rounded
-        higher_level_fl = math.floor(higher_level_fl / rounded) * rounded
+        lower_level_fl = _rounded_lower_index(lower_level_fl, rounded) * rounded
+        higher_level_fl = _rounded_higher_index(higher_level_fl, rounded) * rounded
     return higher_level_fl - lower_level_fl
 
 
@@ -168,6 +182,7 @@ def vertical_band_gap_fl(
     rounded : int, optional
         Flight-level rounding step used before measuring the gap. The lower compared
         level is rounded upward and the higher compared level is rounded downward.
+        Values less than or equal to zero disable rounding and use exact band edges.
 
     Returns
     -------
@@ -233,6 +248,7 @@ def vertical_bands_are_resolved(
     rounded : int, optional
         Flight-level rounding step used before measuring the gap. The lower compared
         level is rounded upward and the higher compared level is rounded downward.
+        Values less than or equal to zero disable rounding and use exact band edges.
 
     Returns
     -------
@@ -298,8 +314,8 @@ def _first_directional_gap_crossing_in_interval_s(
     # same conservative rounding used by `vertical_band_gap_fl`, just kept as indices
     # so the rounded branch can count how many boundary events are still needed.
     if rounded > 0:
-        start_higher_index = math.floor(start_higher_level_fl / rounded)
-        start_lower_index = math.ceil(start_lower_level_fl / rounded)
+        start_higher_index = _rounded_higher_index(start_higher_level_fl, rounded)
+        start_lower_index = _rounded_lower_index(start_lower_level_fl, rounded)
         start_gap_fl = (start_higher_index - start_lower_index) * rounded
     else:
         start_higher_index = 0
@@ -325,7 +341,9 @@ def _first_directional_gap_crossing_in_interval_s(
     # If the rounded or exact gap has not improved enough by `end_s`, later intervals
     # or final selected levels must handle it instead.
     if rounded > 0:
-        end_gap_fl = (math.floor(end_higher_level_fl / rounded) - math.ceil(end_lower_level_fl / rounded)) * rounded
+        end_gap_fl = (
+            _rounded_higher_index(end_higher_level_fl, rounded) - _rounded_lower_index(end_lower_level_fl, rounded)
+        ) * rounded
     else:
         end_gap_fl = end_higher_level_fl - end_lower_level_fl
     if end_gap_fl < required_gap_fl or end_gap_fl <= start_gap_fl:

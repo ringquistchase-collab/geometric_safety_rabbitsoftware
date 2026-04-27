@@ -96,6 +96,7 @@ def catch_up_projection_interval_with_vertical(
     vertical_rounding_fl : int, optional
         Flight-level rounding step used before measuring the vertical gap. The lower
         compared level is rounded upward and the higher compared level downward.
+        Values less than or equal to zero disable rounding and use exact band edges.
 
     Returns
     -------
@@ -247,6 +248,7 @@ def catch_up_projection_interval_with_turns_and_vertical(
     vertical_rounding_fl : int, optional
         Flight-level rounding step used before measuring the vertical gap. The lower
         compared level is rounded upward and the higher compared level downward.
+        Values less than or equal to zero disable rounding and use exact band edges.
     use_interval_local_lipschitz : bool, optional
         If True, use the tighter interval-local Lipschitz bound in the turn-aware
         lateral solver. If False, use its simpler global bound.
