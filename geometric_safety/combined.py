@@ -10,6 +10,7 @@ from geometric_safety.relevant_aircraft import (
 )
 from geometric_safety.vertical import (
     DEFAULT_VERTICAL_RATE_FPM,
+    DEFAULT_VERTICAL_ROUNDING_FL,
     DEFAULT_VERTICAL_SEPARATION_FL,
     VERTICAL_OVERLAP_NEVER_RESOLVES_S,
     time_to_vertical_overlap_resolution,
@@ -47,6 +48,7 @@ def catch_up_projection_interval_with_vertical(
     projection_time_s: float,
     vertical_rate_fpm: float = DEFAULT_VERTICAL_RATE_FPM,
     required_vertical_gap_fl: float = DEFAULT_VERTICAL_SEPARATION_FL,
+    vertical_rounding_fl: int = DEFAULT_VERTICAL_ROUNDING_FL,
 ) -> tuple[bool, float, float, float]:
     """
     Evaluate straight-line lateral safety with an independent vertical overlap check.
@@ -91,6 +93,9 @@ def catch_up_projection_interval_with_vertical(
         aircraft. Negative values are treated as magnitudes.
     required_vertical_gap_fl : float, optional
         Required gap between the two remaining vertical bands, in flight levels.
+    vertical_rounding_fl : int, optional
+        Flight-level rounding step used before measuring the vertical gap. The lower
+        compared level is rounded upward and the higher compared level downward.
 
     Returns
     -------
@@ -122,6 +127,7 @@ def catch_up_projection_interval_with_vertical(
         b_selected_fl=b_selected_fl,
         vertical_rate_fpm=vertical_rate_fpm,
         required_gap_fl=required_vertical_gap_fl,
+        rounded=vertical_rounding_fl,
     )
 
     # If the bands are already distinct by the required gap, the pair is vertically
@@ -186,6 +192,7 @@ def catch_up_projection_interval_with_turns_and_vertical(
     projection_time_s: float,
     vertical_rate_fpm: float = DEFAULT_VERTICAL_RATE_FPM,
     required_vertical_gap_fl: float = DEFAULT_VERTICAL_SEPARATION_FL,
+    vertical_rounding_fl: int = DEFAULT_VERTICAL_ROUNDING_FL,
     use_interval_local_lipschitz: bool = TURN_USE_INTERVAL_LOCAL_LIPSCHITZ_DEFAULT,
     turn_speed_schedule_uncertainty_kt: float = TURN_SPEED_SCHEDULE_UNCERTAINTY_KT_DEFAULT,
 ) -> tuple[bool, float, float, float]:
@@ -237,6 +244,9 @@ def catch_up_projection_interval_with_turns_and_vertical(
         aircraft. Negative values are treated as magnitudes.
     required_vertical_gap_fl : float, optional
         Required gap between the two remaining vertical bands, in flight levels.
+    vertical_rounding_fl : int, optional
+        Flight-level rounding step used before measuring the vertical gap. The lower
+        compared level is rounded upward and the higher compared level downward.
     use_interval_local_lipschitz : bool, optional
         If True, use the tighter interval-local Lipschitz bound in the turn-aware
         lateral solver. If False, use its simpler global bound.
@@ -272,6 +282,7 @@ def catch_up_projection_interval_with_turns_and_vertical(
         b_selected_fl=b_selected_fl,
         vertical_rate_fpm=vertical_rate_fpm,
         required_gap_fl=required_vertical_gap_fl,
+        rounded=vertical_rounding_fl,
     )
 
     # Already-resolved vertical bands are a complete shortcut for the combined result,

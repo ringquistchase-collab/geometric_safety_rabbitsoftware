@@ -36,8 +36,12 @@ rates are treated as magnitudes; climb or descent direction comes from
 the current and selected levels. It returns the first time at which the
 two remaining cleared-to-selected level bands are separated by the
 required vertical gap. The defaults are 1,000 ft/min and 10 flight
-levels. When using the combined check as a safety filter, pass a
-conservative low vertical rate for the operation being modelled.
+levels. Before that gap is measured, compared band edges are rounded
+toward each other to multiples of 10 flight levels by default; pass
+`rounded=0` to the standalone check, or `vertical_rounding_fl=0` to the
+combined checks, to use the exact band edges. When using the combined
+check as a safety filter, pass a conservative low vertical rate for the
+operation being modelled.
 
 The vertical timing model does not include vertical-rate uncertainty:
 the supplied rate should be interpreted as a lower-bound climb/descent
@@ -119,6 +123,7 @@ vertical_resolution_time_s = time_to_vertical_overlap_resolution(
     b_selected_fl=120.0,
     vertical_rate_fpm=1000.0,
     required_gap_fl=10.0,
+    rounded=10,
 )
 
 if vertical_resolution_time_s == VERTICAL_OVERLAP_NEVER_RESOLVES_S:
@@ -145,6 +150,7 @@ is_safe, min_distance_m, closest_time_s, vertical_resolution_time_s = (
         projection_time_s=900.0,
         vertical_rate_fpm=1000.0,
         required_vertical_gap_fl=10.0,
+        vertical_rounding_fl=10,
     )
 )
 ```

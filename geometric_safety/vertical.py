@@ -1,5 +1,7 @@
 """Vertical cleared-band timing for aircraft level changes."""
 
+import math
+
 import numba
 
 # Levels are represented directly as flight levels throughout this module. The only
@@ -8,6 +10,7 @@ FT_PER_FL = 100.0
 SECONDS_PER_MINUTE = 60.0
 DEFAULT_VERTICAL_RATE_FPM = 1000.0
 DEFAULT_VERTICAL_SEPARATION_FL = 10.0
+DEFAULT_VERTICAL_ROUNDING_FL = 10
 
 # A real resolution time is always non-negative, so a negative sentinel can represent
 # "never resolves" without relying on infinity semantics under Numba fast-math.
@@ -79,6 +82,56 @@ def _vertical_band_at_time_fl(
 
 
 @numba.njit(cache=True, fastmath=True)
+def _directional_compared_levels_fl(
+    a_current_fl: float,
+    a_selected_fl: float,
+    b_current_fl: float,
+    b_selected_fl: float,
+    vertical_rate_fpm: float,
+    t_s: float,
+    b_above_a: bool,
+) -> tuple[float, float]:
+    """Return compared lower and higher band edges for one vertical ordering."""
+    # Pick the upper edge of the lower band and the lower edge of the higher band for
+    # the tested ordering. Rounding, if needed, is applied by the caller.
+    a_low_fl, a_high_fl = _vertical_band_at_time_fl(a_current_fl, a_selected_fl, vertical_rate_fpm, t_s)
+    b_low_fl, b_high_fl = _vertical_band_at_time_fl(b_current_fl, b_selected_fl, vertical_rate_fpm, t_s)
+    if b_above_a:
+        return a_high_fl, b_low_fl
+    return b_high_fl, a_low_fl
+
+
+@numba.njit(cache=True, fastmath=True)
+def _directional_band_gap_fl(
+    a_current_fl: float,
+    a_selected_fl: float,
+    b_current_fl: float,
+    b_selected_fl: float,
+    vertical_rate_fpm: float,
+    t_s: float,
+    b_above_a: bool,
+    rounded: int,
+) -> float:
+    """Return one rounded directional gap between the remaining vertical bands."""
+    lower_level_fl, higher_level_fl = _directional_compared_levels_fl(
+        a_current_fl=a_current_fl,
+        a_selected_fl=a_selected_fl,
+        b_current_fl=b_current_fl,
+        b_selected_fl=b_selected_fl,
+        vertical_rate_fpm=vertical_rate_fpm,
+        t_s=t_s,
+        b_above_a=b_above_a,
+    )
+
+    # Rounding is deliberately conservative: close the tested gap before comparing it
+    # with the required separation. A non-positive step leaves exact FLs unchanged.
+    if rounded > 0:
+        lower_level_fl = math.ceil(lower_level_fl / rounded) * rounded
+        higher_level_fl = math.floor(higher_level_fl / rounded) * rounded
+    return higher_level_fl - lower_level_fl
+
+
+@numba.njit(cache=True, fastmath=True)
 def vertical_band_gap_fl(
     a_current_fl: float,
     a_selected_fl: float,
@@ -86,13 +139,16 @@ def vertical_band_gap_fl(
     b_selected_fl: float,
     vertical_rate_fpm: float = DEFAULT_VERTICAL_RATE_FPM,
     t_s: float = 0.0,
+    rounded: int = DEFAULT_VERTICAL_ROUNDING_FL,
 ) -> float:
     """
     Return the signed gap between the two remaining vertical bands.
 
     A non-negative value means the bands no longer overlap. A value of `10.0`, for
     example, means the bands are separated by 10 flight levels, i.e. 1000 ft. When the
-    bands overlap, the returned value is negative by the amount of overlap.
+    bands overlap, the returned value is negative by the amount of overlap. Compared
+    band edges are rounded toward each other to multiples of `rounded` before the gap is
+    measured; pass `rounded <= 0` to use the exact band edges.
 
     Parameters
     ----------
@@ -109,6 +165,9 @@ def vertical_band_gap_fl(
         aircraft. Negative values are treated as magnitudes.
     t_s : float, optional
         Elapsed time in seconds.
+    rounded : int, optional
+        Flight-level rounding step used before measuring the gap. The lower compared
+        level is rounded upward and the higher compared level is rounded downward.
 
     Returns
     -------
@@ -117,10 +176,26 @@ def vertical_band_gap_fl(
     """
     # Either B can be above A, or A can be above B. The signed gap is whichever of those
     # two directional gaps is larger; negative values mean both directions still overlap.
-    a_low_fl, a_high_fl = _vertical_band_at_time_fl(a_current_fl, a_selected_fl, vertical_rate_fpm, t_s)
-    b_low_fl, b_high_fl = _vertical_band_at_time_fl(b_current_fl, b_selected_fl, vertical_rate_fpm, t_s)
-    b_above_a_gap_fl = b_low_fl - a_high_fl
-    a_above_b_gap_fl = a_low_fl - b_high_fl
+    b_above_a_gap_fl = _directional_band_gap_fl(
+        a_current_fl=a_current_fl,
+        a_selected_fl=a_selected_fl,
+        b_current_fl=b_current_fl,
+        b_selected_fl=b_selected_fl,
+        vertical_rate_fpm=vertical_rate_fpm,
+        t_s=t_s,
+        b_above_a=True,
+        rounded=rounded,
+    )
+    a_above_b_gap_fl = _directional_band_gap_fl(
+        a_current_fl=a_current_fl,
+        a_selected_fl=a_selected_fl,
+        b_current_fl=b_current_fl,
+        b_selected_fl=b_selected_fl,
+        vertical_rate_fpm=vertical_rate_fpm,
+        t_s=t_s,
+        b_above_a=False,
+        rounded=rounded,
+    )
     return max(b_above_a_gap_fl, a_above_b_gap_fl)
 
 
@@ -133,6 +208,7 @@ def vertical_bands_are_resolved(
     vertical_rate_fpm: float = DEFAULT_VERTICAL_RATE_FPM,
     required_gap_fl: float = DEFAULT_VERTICAL_SEPARATION_FL,
     t_s: float = 0.0,
+    rounded: int = DEFAULT_VERTICAL_ROUNDING_FL,
 ) -> bool:
     """
     Return whether the remaining vertical bands are distinct by `required_gap_fl`.
@@ -154,6 +230,9 @@ def vertical_bands_are_resolved(
         Required gap between the two remaining vertical bands, in flight levels.
     t_s : float, optional
         Elapsed time in seconds.
+    rounded : int, optional
+        Flight-level rounding step used before measuring the gap. The lower compared
+        level is rounded upward and the higher compared level is rounded downward.
 
     Returns
     -------
@@ -170,6 +249,7 @@ def vertical_bands_are_resolved(
         b_selected_fl=b_selected_fl,
         vertical_rate_fpm=vertical_rate_fpm,
         t_s=t_s,
+        rounded=rounded,
     )
     return gap_fl >= required_gap_fl
 
@@ -198,27 +278,120 @@ def _first_directional_gap_crossing_in_interval_s(
     start_s: float,
     end_s: float,
     b_above_a: bool,
+    rounded: int,
 ) -> float:
     """Return when one directional band gap first reaches `required_gap_fl`."""
     # Between two adjacent "aircraft reaches selected level" events, each band edge is
-    # linear in time, so one directional gap is linear too. A single interpolation gives
-    # the first crossing if the interval endpoints bracket the required gap.
-    start_a_low_fl, start_a_high_fl = _vertical_band_at_time_fl(a_current_fl, a_selected_fl, vertical_rate_fpm, start_s)
-    start_b_low_fl, start_b_high_fl = _vertical_band_at_time_fl(b_current_fl, b_selected_fl, vertical_rate_fpm, start_s)
-    start_gap_fl = start_b_low_fl - start_a_high_fl if b_above_a else start_a_low_fl - start_b_high_fl
+    # linear in time. Without rounding that leaves one linear gap; with rounding, the
+    # conservative directional gap changes only at rounding-grid boundary events.
+    start_lower_level_fl, start_higher_level_fl = _directional_compared_levels_fl(
+        a_current_fl=a_current_fl,
+        a_selected_fl=a_selected_fl,
+        b_current_fl=b_current_fl,
+        b_selected_fl=b_selected_fl,
+        vertical_rate_fpm=vertical_rate_fpm,
+        t_s=start_s,
+        b_above_a=b_above_a,
+    )
+
+    # Express the starting rounded gap as a difference in grid indices. This is the
+    # same conservative rounding used by `vertical_band_gap_fl`, just kept as indices
+    # so the rounded branch can count how many boundary events are still needed.
+    if rounded > 0:
+        start_higher_index = math.floor(start_higher_level_fl / rounded)
+        start_lower_index = math.ceil(start_lower_level_fl / rounded)
+        start_gap_fl = (start_higher_index - start_lower_index) * rounded
+    else:
+        start_higher_index = 0
+        start_lower_index = 0
+        start_gap_fl = start_higher_level_fl - start_lower_level_fl
     if start_gap_fl >= required_gap_fl:
         return start_s
 
     if end_s <= start_s:
         return VERTICAL_OVERLAP_NEVER_RESOLVES_S
 
-    end_a_low_fl, end_a_high_fl = _vertical_band_at_time_fl(a_current_fl, a_selected_fl, vertical_rate_fpm, end_s)
-    end_b_low_fl, end_b_high_fl = _vertical_band_at_time_fl(b_current_fl, b_selected_fl, vertical_rate_fpm, end_s)
-    end_gap_fl = end_b_low_fl - end_a_high_fl if b_above_a else end_a_low_fl - end_b_high_fl
+    end_lower_level_fl, end_higher_level_fl = _directional_compared_levels_fl(
+        a_current_fl=a_current_fl,
+        a_selected_fl=a_selected_fl,
+        b_current_fl=b_current_fl,
+        b_selected_fl=b_selected_fl,
+        vertical_rate_fpm=vertical_rate_fpm,
+        t_s=end_s,
+        b_above_a=b_above_a,
+    )
+
+    # The endpoint tells us whether this interval can possibly contain the crossing.
+    # If the rounded or exact gap has not improved enough by `end_s`, later intervals
+    # or final selected levels must handle it instead.
+    if rounded > 0:
+        end_gap_fl = (math.floor(end_higher_level_fl / rounded) - math.ceil(end_lower_level_fl / rounded)) * rounded
+    else:
+        end_gap_fl = end_higher_level_fl - end_lower_level_fl
     if end_gap_fl < required_gap_fl or end_gap_fl <= start_gap_fl:
         return VERTICAL_OVERLAP_NEVER_RESOLVES_S
 
-    return start_s + (required_gap_fl - start_gap_fl) * (end_s - start_s) / (end_gap_fl - start_gap_fl)
+    # Exact edges still have the closed-form crossing, since the directional gap is a
+    # single line over this interval.
+    if rounded <= 0:
+        return start_s + (required_gap_fl - start_gap_fl) * (end_s - start_s) / (end_gap_fl - start_gap_fl)
+
+    # With rounding, each upward crossing by the higher compared edge or downward
+    # crossing by the lower compared edge increases the rounded gap by one grid step.
+    # Both moving streams have the same period because the model uses one shared rate.
+    required_gap_steps = math.ceil(required_gap_fl / rounded)
+    needed_gap_steps = required_gap_steps - (start_higher_index - start_lower_index)
+    interval_s = end_s - start_s
+    higher_slope_flps = (end_higher_level_fl - start_higher_level_fl) / interval_s
+    lower_slope_flps = (end_lower_level_fl - start_lower_level_fl) / interval_s
+
+    # Find the first helpful grid crossing made by each compared edge. A higher edge
+    # moving upward or a lower edge moving downward each opens the rounded gap by one
+    # `rounded` step; stationary or wrong-way edges do not contribute in this interval.
+    first_higher_crossing_s = VERTICAL_OVERLAP_NEVER_RESOLVES_S
+    first_lower_crossing_s = VERTICAL_OVERLAP_NEVER_RESOLVES_S
+    period_s = 0.0
+    if higher_slope_flps > 0.0:
+        next_higher_boundary_fl = (start_higher_index + 1) * rounded
+        first_higher_crossing_s = start_s + (next_higher_boundary_fl - start_higher_level_fl) / higher_slope_flps
+        period_s = rounded / higher_slope_flps
+    if lower_slope_flps < 0.0:
+        next_lower_boundary_fl = (start_lower_index - 1) * rounded
+        first_lower_crossing_s = start_s + (next_lower_boundary_fl - start_lower_level_fl) / lower_slope_flps
+        period_s = rounded / -lower_slope_flps
+
+    # Select the Nth helpful boundary event. With one active edge this is one arithmetic
+    # progression; with two active edges, the two progressions have the same period and
+    # either coincide exactly or alternate with a fixed offset.
+    if (
+        first_higher_crossing_s == VERTICAL_OVERLAP_NEVER_RESOLVES_S
+        and first_lower_crossing_s == VERTICAL_OVERLAP_NEVER_RESOLVES_S
+    ):
+        return VERTICAL_OVERLAP_NEVER_RESOLVES_S
+    if first_higher_crossing_s == VERTICAL_OVERLAP_NEVER_RESOLVES_S:
+        crossing_s = first_lower_crossing_s + (needed_gap_steps - 1) * period_s
+    elif first_lower_crossing_s == VERTICAL_OVERLAP_NEVER_RESOLVES_S:
+        crossing_s = first_higher_crossing_s + (needed_gap_steps - 1) * period_s
+    else:
+        # Two active event streams either coincide on every period, or interleave with
+        # fixed offsets. Count simultaneous events as two grid steps.
+        if abs(first_higher_crossing_s - first_lower_crossing_s) <= 1e-9:
+            crossing_s = first_higher_crossing_s + ((needed_gap_steps + 1) // 2 - 1) * period_s
+        else:
+            first_crossing_s = min(first_higher_crossing_s, first_lower_crossing_s)
+            second_crossing_s = max(first_higher_crossing_s, first_lower_crossing_s)
+            if needed_gap_steps % 2 == 1:
+                crossing_s = first_crossing_s + (needed_gap_steps // 2) * period_s
+            else:
+                crossing_s = second_crossing_s + ((needed_gap_steps - 2) // 2) * period_s
+
+    # The endpoint check above should normally keep the selected event inside this
+    # interval. Keep a small tolerance for floating-point boundary arithmetic.
+    if crossing_s > end_s:
+        if crossing_s - end_s <= 1e-9:
+            return end_s
+        return VERTICAL_OVERLAP_NEVER_RESOLVES_S
+    return crossing_s
 
 
 @numba.njit(cache=True, fastmath=True)
@@ -229,6 +402,7 @@ def time_to_vertical_overlap_resolution(
     b_selected_fl: float,
     vertical_rate_fpm: float = DEFAULT_VERTICAL_RATE_FPM,
     required_gap_fl: float = DEFAULT_VERTICAL_SEPARATION_FL,
+    rounded: int = DEFAULT_VERTICAL_ROUNDING_FL,
 ) -> float:
     """
     Return the first time at which the remaining vertical bands are resolved.
@@ -237,7 +411,8 @@ def time_to_vertical_overlap_resolution(
     `vertical_rate_fpm`, stopping once selected level is reached. At any time, its
     vertical band is the interval between its current level at that time and its
     selected level. The returned time is the first second at which those two bands are
-    separated by at least `required_gap_fl`.
+    separated by at least `required_gap_fl`, after rounding compared band edges toward
+    each other to multiples of `rounded`.
 
     Returns `0.0` if the bands are already resolved, and
     `VERTICAL_OVERLAP_NEVER_RESOLVES_S` if they never resolve under the selected levels
@@ -259,6 +434,10 @@ def time_to_vertical_overlap_resolution(
         from each aircraft's current and selected levels.
     required_gap_fl : float, optional
         Required gap between the two remaining vertical bands, in flight levels.
+    rounded : int, optional
+        Flight-level rounding step used before measuring the gap. The lower compared
+        level is rounded upward and the higher compared level is rounded downward.
+        Pass `rounded <= 0` to use exact band edges.
 
     Returns
     -------
@@ -269,9 +448,11 @@ def time_to_vertical_overlap_resolution(
 
     Notes
     -----
-    The calculation is closed form. Band edges are piecewise linear in time, and their
-    slopes can only change when one aircraft reaches its selected level. The function
-    therefore checks at most two linear intervals and both possible vertical orderings.
+    Band edges are piecewise linear in time, and their slopes can only change when one
+    aircraft reaches its selected level. The function therefore checks at most two
+    intervals and both possible vertical orderings. Exact edge checks use direct linear
+    interpolation; rounded checks count the rounding-grid boundary events needed to
+    satisfy the required gap.
     The model does not include vertical-rate uncertainty: because the same rate is used
     for both aircraft, callers using this as a safety filter should pass a conservative
     low value that all filtered aircraft are expected to meet or exceed.
@@ -286,6 +467,7 @@ def time_to_vertical_overlap_resolution(
         b_selected_fl=b_selected_fl,
         vertical_rate_fpm=vertical_rate_fpm,
         required_gap_fl=required_gap_fl,
+        rounded=rounded,
         t_s=0.0,
     ):
         return 0.0
@@ -321,6 +503,7 @@ def time_to_vertical_overlap_resolution(
             start_s=start_s,
             end_s=end_s,
             b_above_a=True,
+            rounded=rounded,
         )
         a_above_crossing_s = _first_directional_gap_crossing_in_interval_s(
             a_current_fl=a_current_fl,
@@ -332,6 +515,7 @@ def time_to_vertical_overlap_resolution(
             start_s=start_s,
             end_s=end_s,
             b_above_a=False,
+            rounded=rounded,
         )
 
         if b_above_crossing_s != VERTICAL_OVERLAP_NEVER_RESOLVES_S and (
