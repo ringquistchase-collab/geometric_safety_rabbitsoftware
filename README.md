@@ -39,6 +39,14 @@ required vertical gap. The defaults are 1,000 ft/min and 10 flight
 levels. When using the combined check as a safety filter, pass a
 conservative low vertical rate for the operation being modelled.
 
+The vertical timing model does not include vertical-rate uncertainty:
+the supplied rate should be interpreted as a lower-bound climb/descent
+rate that all aircraft being filtered are expected to meet or exceed.
+The combined lateral/vertical check also keeps the supplied lateral
+kinematics fixed while the aircraft climb or descend; it does not model
+changes in lateral speed caused by vertical profile, altitude, or
+speed schedule.
+
 ## Installation
 
 Add to an existing uv project:

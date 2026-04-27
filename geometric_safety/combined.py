@@ -109,7 +109,9 @@ def catch_up_projection_interval_with_vertical(
     when cleared-to-selected level bands resolve; the straight-line lateral solver then
     certifies only the period before that time. If the bands never resolve, the full
     lateral projection horizon is checked. Callers using this as a safety filter should
-    pass a conservative low vertical rate for the operation being modelled.
+    pass a conservative low vertical rate that all filtered aircraft are expected to
+    meet or exceed. The supplied lateral kinematics remain fixed during climb/descent;
+    altitude-driven lateral speed changes are not modelled.
     """
     # Work out the independent vertical timing first. This is the gate that decides
     # whether the lateral check can be shortened or skipped altogether.
@@ -257,8 +259,9 @@ def catch_up_projection_interval_with_turns_and_vertical(
     This function preserves the turn-aware lateral solver's conservative time
     certification. It only shortens the lateral horizon when the independent vertical
     timing check proves that the level bands resolve earlier. Callers using this as a
-    safety filter should pass a conservative low vertical rate for the operation being
-    modelled.
+    safety filter should pass a conservative low vertical rate that all filtered
+    aircraft are expected to meet or exceed. The supplied lateral kinematics remain
+    fixed during climb/descent; altitude-driven lateral speed changes are not modelled.
     """
     # The vertical calculation is intentionally shared with the fixed-heading wrapper;
     # only the lateral certification method changes below.

@@ -272,8 +272,9 @@ def time_to_vertical_overlap_resolution(
     The calculation is closed form. Band edges are piecewise linear in time, and their
     slopes can only change when one aircraft reaches its selected level. The function
     therefore checks at most two linear intervals and both possible vertical orderings.
-    Because the same rate is used for both aircraft, callers using this as a safety
-    filter should pass a conservative low value for the operation being modelled.
+    The model does not include vertical-rate uncertainty: because the same rate is used
+    for both aircraft, callers using this as a safety filter should pass a conservative
+    low value that all filtered aircraft are expected to meet or exceed.
     """
     if required_gap_fl < 0.0:
         required_gap_fl = 0.0
