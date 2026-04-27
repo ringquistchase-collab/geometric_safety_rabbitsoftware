@@ -26,10 +26,21 @@ class TestVerticalOverlapResolution:
     def test_level_at_time_accepts_rate_magnitude_from_public_api(self):
         assert level_at_time_fl(100.0, 120.0, -1000.0, 60.0) == pytest.approx(110.0)
 
+    def test_level_at_time_clamps_after_selected_level_in_descent(self):
+        assert level_at_time_fl(200.0, 180.0, 1000.0, 180.0) == pytest.approx(180.0)
+
     def test_already_distinct_bands_return_zero(self):
         assert vertical_band_gap_fl(100.0, 100.0, 120.0, 120.0) == pytest.approx(20.0)
         assert vertical_bands_are_resolved(100.0, 100.0, 120.0, 120.0)
         assert time_to_vertical_overlap_resolution(100.0, 100.0, 120.0, 120.0) == pytest.approx(0.0)
+
+    def test_band_gap_tracks_remaining_vertical_band_over_time(self):
+        assert vertical_band_gap_fl(100.0, 100.0, 100.0, 120.0, t_s=0.0) == pytest.approx(0.0)
+        assert vertical_band_gap_fl(100.0, 100.0, 100.0, 120.0, t_s=30.0) == pytest.approx(5.0)
+        assert vertical_band_gap_fl(100.0, 100.0, 100.0, 120.0, t_s=60.0) == pytest.approx(10.0)
+
+        assert not vertical_bands_are_resolved(100.0, 100.0, 100.0, 120.0, t_s=30.0)
+        assert vertical_bands_are_resolved(100.0, 100.0, 100.0, 120.0, t_s=60.0)
 
     def test_both_climbing_resolves_when_lower_band_edge_clears(self):
         resolution_s = time_to_vertical_overlap_resolution(
@@ -75,6 +86,17 @@ class TestVerticalOverlapResolution:
         )
         assert resolution_s == pytest.approx(360.0)
 
+    def test_zero_required_gap_resolves_at_first_touch(self):
+        resolution_s = time_to_vertical_overlap_resolution(
+            a_current_fl=100.0,
+            a_selected_fl=150.0,
+            b_current_fl=200.0,
+            b_selected_fl=140.0,
+            vertical_rate_fpm=1000.0,
+            required_gap_fl=0.0,
+        )
+        assert resolution_s == pytest.approx(300.0)
+
     def test_rate_parameter_scales_time(self):
         slow_resolution_s = time_to_vertical_overlap_resolution(
             a_current_fl=100.0,
@@ -117,6 +139,17 @@ class TestVerticalOverlapResolution:
             required_gap_fl=10.0,
         )
         assert resolution_s == pytest.approx(VERTICAL_OVERLAP_NEVER_RESOLVES_S)
+
+    def test_zero_rate_keeps_already_resolved_bands_safe(self):
+        resolution_s = time_to_vertical_overlap_resolution(
+            a_current_fl=100.0,
+            a_selected_fl=100.0,
+            b_current_fl=120.0,
+            b_selected_fl=120.0,
+            vertical_rate_fpm=0.0,
+            required_gap_fl=10.0,
+        )
+        assert resolution_s == pytest.approx(0.0)
 
     def test_negative_rate_is_treated_as_magnitude(self):
         positive_rate_s = time_to_vertical_overlap_resolution(
@@ -212,6 +245,49 @@ class TestCombinedSafety:
         assert vertical_time_s == pytest.approx(120.0)
         assert min_distance_m < separation_m
 
+    def test_vertical_resolution_after_projection_uses_full_lateral_horizon(self):
+        a_lat, a_lon = 51.0, -1.0
+        b_lat, b_lon = _local_xy_to_latlon(0.0, 20.0 * NMI_TO_M, a_lat, a_lon)
+        separation_m = 5.0 * NMI_TO_M
+
+        lateral = catch_up_projection_interval(
+            a_lat=a_lat,
+            a_lon=a_lon,
+            a_heading=0.0,
+            a_speed_kt=360.0,
+            b_lat=b_lat,
+            b_lon=b_lon,
+            b_heading=180.0,
+            b_speed_kt=360.0,
+            separation_threshold_m=separation_m,
+            speed_diff_kt=0.0,
+            projection_time_s=60.0,
+        )
+
+        combined = catch_up_projection_interval_with_vertical(
+            a_lat=a_lat,
+            a_lon=a_lon,
+            a_heading=0.0,
+            a_speed_kt=360.0,
+            a_current_fl=100.0,
+            a_selected_fl=100.0,
+            b_lat=b_lat,
+            b_lon=b_lon,
+            b_heading=180.0,
+            b_speed_kt=360.0,
+            b_current_fl=100.0,
+            b_selected_fl=120.0,
+            separation_threshold_m=separation_m,
+            speed_diff_kt=0.0,
+            projection_time_s=60.0,
+            vertical_rate_fpm=500.0,
+        )
+
+        assert combined[0] == lateral[0]
+        assert combined[1] == pytest.approx(lateral[1], abs=1e-6)
+        assert combined[2] == pytest.approx(lateral[2], abs=1e-6)
+        assert combined[3] == pytest.approx(120.0)
+
     def test_already_resolved_vertical_bands_shortcut_to_safe(self):
         is_safe, min_distance_m, closest_time_s, vertical_time_s = catch_up_projection_interval_with_vertical(
             a_lat=51.0,
@@ -224,6 +300,34 @@ class TestCombinedSafety:
             b_lon=-1.0,
             b_heading=180.0,
             b_speed_kt=360.0,
+            b_current_fl=120.0,
+            b_selected_fl=120.0,
+            separation_threshold_m=5.0 * NMI_TO_M,
+            speed_diff_kt=0.0,
+            projection_time_s=600.0,
+        )
+
+        assert is_safe
+        assert min_distance_m == pytest.approx(0.0)
+        assert closest_time_s == pytest.approx(0.0)
+        assert vertical_time_s == pytest.approx(0.0)
+
+    def test_turn_aware_already_resolved_bands_return_t0_diagnostics(self):
+        is_safe, min_distance_m, closest_time_s, vertical_time_s = catch_up_projection_interval_with_turns_and_vertical(
+            a_lat=51.0,
+            a_lon=-1.0,
+            a_heading0_deg=0.0,
+            a_target_heading_deg=270.0,
+            a_speed_kt=360.0,
+            a_turn_rate_deg_sec=1.5,
+            a_current_fl=100.0,
+            a_selected_fl=100.0,
+            b_lat=51.0,
+            b_lon=-1.0,
+            b_heading0_deg=180.0,
+            b_target_heading_deg=90.0,
+            b_speed_kt=360.0,
+            b_turn_rate_deg_sec=1.5,
             b_current_fl=120.0,
             b_selected_fl=120.0,
             separation_threshold_m=5.0 * NMI_TO_M,
