@@ -45,3 +45,5 @@ venv/
 
 # Paper evaluation outputs
 paper_eval_outputs/
+paper_results/
+paper/results/*.tar.gz

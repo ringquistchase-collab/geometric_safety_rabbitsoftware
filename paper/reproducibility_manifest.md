@@ -1,0 +1,81 @@
+# Paper Reproducibility Manifest
+
+This file maps the manuscript's numerical claims and generated figures
+to the saved artifacts produced by the paper pipeline.
+
+## Full Data Stage
+
+Run:
+
+```bash
+N_JOBS=128 ./paper/run_full_results.sh paper_eval_outputs/<run>
+```
+
+Smoke-test the same entrypoint with:
+
+```bash
+QUICK=1 N_JOBS=4 ./paper/run_full_results.sh paper_eval_outputs/<quick-run>
+```
+
+Primary outputs:
+
+| Artifact | Purpose |
+| --- | --- |
+| `paper_eval_outputs/<run>/logs/main_evaluation.log` | Terminal log for the five-seed main evaluation. |
+| `paper_eval_outputs/<run>/main_evaluation/campaign_summary.json` | Source for aggregate robustness claims and rule-of-three bound. |
+| `paper_eval_outputs/<run>/main_evaluation/campaign_runs.csv` | Per-seed compact campaign table. |
+| `paper_eval_outputs/<run>/main_evaluation/run_*_seed_*/summary.json` | Per-seed summaries, narrative scenarios, ablation rows, and runtime summaries. |
+| `paper_eval_outputs/<run>/main_evaluation/run_*_seed_*/run_record.json` | Per-seed count-level records used to build aggregate summaries. |
+| `paper_eval_outputs/<run>/main_evaluation/run_*_seed_*/stress_map_source.csv` | Cell counts and rates for the mixed-turn stress-map figure. |
+| `paper_eval_outputs/<run>/main_evaluation/run_*_seed_*/near_threshold_default_margin_summary.csv` | Default-setting certification rates by near-threshold margin bin. |
+| `paper_eval_outputs/<run>/logs/projection_sweep.log` | Terminal log for the deterministic projection sweep. |
+| `paper_eval_outputs/<run>/projection_full/summary.json` | Source for uncapped projection-sensitivity summaries. |
+| `paper_eval_outputs/<run>/projection_full/projection_rows.csv.gz` | Deterministic projection rows used to render the capped projection figure. |
+
+The compact default deliberately does not write the full straight,
+mixed-turn, or near-threshold row dumps. Those files are large and are
+not needed to reproduce the manuscript figures or headline claims. Use
+`paper.run_evaluation --row-output-mode all` only for forensic debugging.
+
+## Rendering Stage
+
+Run:
+
+```bash
+./paper/render_paper_figures.sh paper_eval_outputs/<run>
+```
+
+Rendered outputs:
+
+| Manuscript item | Rendered artifact | Data source |
+| --- | --- | --- |
+| Mixed-turn stress maps | `rendered_figures/main/fig_stress_maps.pdf` | first per-seed run, `stress_map_source.csv` |
+| Near-threshold ablation | `rendered_figures/main/fig_ablation.pdf` | first per-seed run, `summary.json` |
+| Sampled-heuristic supplement figure | `rendered_figures/main/fig_sampled_proxy_miss.pdf` | first per-seed run, `summary.json` narrative scenario |
+| Projection-sensitivity supplement figure | `rendered_figures/projection_deterministic_51_cap_100nmi/projection_min_error_vs_excursion.pdf` | `projection_full/projection_rows.csv.gz` filtered to 100 NMI |
+| Versioned projection artifact | `paper/results/projection_deterministic_51_cap_100nmi.tar.gz` | Capped projection rendering stage |
+| Full run archive | `paper/results/<run>.tar.gz` | Complete compact data and rendered figure run |
+
+## Claim Sources
+
+| Claim family | Source artifact |
+| --- | --- |
+| Straight-heading exactness | `main_evaluation/campaign_summary.json` and `run_*/summary.json` |
+| Mixed-turn false-safe / false-unsafe counts | `main_evaluation/campaign_summary.json` and `run_*/run_record.json` |
+| Five-seed robustness and rule-of-three bound | `main_evaluation/campaign_summary.json` |
+| Near-threshold certification rate | first per-seed `summary.json` and `campaign_summary.json` |
+| Near-threshold certification by margin bin | first per-seed `near_threshold_default_margin_summary.csv` |
+| Runtime summary | first per-seed `table_4_runtime_summary.csv` and all per-seed `summary.json` files |
+| Projection disagreement and ambiguity-band counts | `paper/results/projection_deterministic_51_cap_100nmi.tar.gz` |
+
+## Schematic Figures
+
+The application schematic and clearance-grid figure are explanatory
+manuscript figures rather than stochastic experiment outputs. They are
+generated from the manuscript repository scripts and are not required for
+checking the empirical claims above:
+
+| Manuscript figure | Script |
+| --- | --- |
+| Lateral overlap schematic | `scripts/render_lateral_overlap_figure.py` in the manuscript repository |
+| Clearance grid | `scripts/render_clearance_grid_figure.py` in the manuscript repository |
