@@ -11,6 +11,7 @@ else
 fi
 
 figure_root="${2:-$run_root/rendered_figures}"
+application_dir="$figure_root/application"
 if [[ -n "${MAIN_RUN_DIR:-}" ]]; then
     main_run_dir="$MAIN_RUN_DIR"
 elif [[ -f "$run_root/main_evaluation/run_00_seed_20260325/summary.json" ]]; then
@@ -22,7 +23,7 @@ projection_archive="${PROJECTION_ARCHIVE:-paper/results/projection_deterministic
 full_archive="${FULL_ARCHIVE:-paper/results/$(basename "$run_root").tar.gz}"
 uv_bin="${UV:-uv}"
 
-mkdir -p "$run_root/logs" "$figure_root" "$(dirname "$full_archive")"
+mkdir -p "$run_root/logs" "$figure_root" "$application_dir" "$(dirname "$full_archive")"
 
 run_and_log() {
     local name="$1"
@@ -39,6 +40,17 @@ run_and_log render_main_figures \
         --figure-output-dir "$figure_root/main" \
         --output-dir "$run_root/render_work/main" \
         --figure-formats pdf
+
+run_and_log render_application_figures \
+    "$uv_bin" run python -m paper.render_lateral_overlap_figure \
+        --output-pdf "$application_dir/fig_lateral_overlap_schematic.pdf"
+
+run_and_log render_clearance_grid \
+    "$uv_bin" run python -m paper.render_clearance_grid_figure \
+        --output-pdf "$application_dir/fig_clearance_grid.pdf" \
+        --source-json "$application_dir/fig_clearance_grid_source.json.gz" \
+        --grid-density "${CLEARANCE_GRID_DENSITY:-600}" \
+        --write-source-json
 
 run_and_log render_projection_figures \
     "$uv_bin" run python -m paper.plot_projection_sweep \

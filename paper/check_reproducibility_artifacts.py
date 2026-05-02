@@ -64,6 +64,9 @@ def check_run(run_root: Path, projection_archive: Path, *, require_rendered: boo
                 run_root / "rendered_figures" / "main" / "fig_stress_maps.pdf",
                 run_root / "rendered_figures" / "main" / "fig_ablation.pdf",
                 run_root / "rendered_figures" / "main" / "fig_sampled_proxy_miss.pdf",
+                run_root / "rendered_figures" / "application" / "fig_lateral_overlap_schematic.pdf",
+                run_root / "rendered_figures" / "application" / "fig_clearance_grid.pdf",
+                run_root / "rendered_figures" / "application" / "fig_clearance_grid_source.json.gz",
                 run_root
                 / "rendered_figures"
                 / "projection_deterministic_51_cap_100nmi"
