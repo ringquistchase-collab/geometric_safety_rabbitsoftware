@@ -884,8 +884,15 @@ def run_near_threshold_suite(
                 "median_runtime_us": float(statistics.median(runtimes_us)),
             }
         )
+    default_rows = filter_default_near_threshold_rows(rows)
     margin_summary = summarize_by_margin_bin(rows)
-    return {"rows": rows, "summary_rows": summary_rows, "margin_summary": margin_summary}
+    default_margin_summary = summarize_by_margin_bin(default_rows)
+    return {
+        "rows": rows,
+        "summary_rows": summary_rows,
+        "margin_summary": margin_summary,
+        "default_margin_summary": default_margin_summary,
+    }
 
 
 def select_narrative_scenarios(
@@ -999,6 +1006,11 @@ def summarize_by_margin_bin(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
             }
         )
     return sorted(summary, key=lambda row: row["margin_bin_nmi"])
+
+
+def filter_default_near_threshold_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Return rows for the default near-threshold certification setting."""
+    return [row for row in rows if row["lipschitz_mode"] == "local" and abs(float(row["dt_min_s"]) - 3.0) <= 1e-12]
 
 
 def build_uniform_times(projection_time_s: float, dt_s: float) -> np.ndarray:

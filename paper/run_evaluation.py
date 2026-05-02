@@ -7,6 +7,7 @@ import argparse
 from collections.abc import Callable
 import csv
 from dataclasses import asdict
+import gzip
 import json
 import math
 import os
@@ -48,6 +49,8 @@ SUITE_PROFILES = {
     "paper": {"straight_n": 50_000, "mixed_turn_n": 20_000, "near_threshold_n": 5_000},
     "large100k": {"straight_n": 100_000, "mixed_turn_n": 100_000, "near_threshold_n": 100_000},
 }
+MANUSCRIPT_FONT_FAMILY = ["Times New Roman", "Times", "Nimbus Roman", "Liberation Serif", "DejaVu Serif"]
+ROW_OUTPUT_MODES = ("all", "none", "figure", "first-figure")
 
 
 def parse_args() -> argparse.Namespace:
@@ -111,6 +114,16 @@ def parse_args() -> argparse.Namespace:
         help="Number of parallel worker processes for evaluation and generation.",
     )
     parser.add_argument("--skip-rows", action="store_true", help="Skip writing row-level CSV outputs.")
+    parser.add_argument(
+        "--row-output-mode",
+        choices=ROW_OUTPUT_MODES,
+        default="all",
+        help=(
+            "Row-level CSV policy: all writes every suite row; none writes only summaries; "
+            "figure writes only rows needed to re-render figures; first-figure does that only for the first seed."
+        ),
+    )
+    parser.add_argument("--compress-rows", action="store_true", help="Write row-level CSV outputs as gzip files.")
     parser.add_argument("--skip-plots", action="store_true", help="Skip writing figure outputs.")
     return parser.parse_args()
 
@@ -140,13 +153,15 @@ def main() -> None:
 
     seeds = campaign_seeds(args.seed, args.repeat_seeds, args.seed_step)
     output_dir = args.output_dir
+    row_output_mode = effective_row_output_mode(args)
 
     if len(seeds) == 1:
         config = build_config(args, seed=seeds[0])
         run_single_evaluation(
             config,
             output_dir,
-            write_rows=not args.skip_rows,
+            row_output_mode="figure" if row_output_mode == "first-figure" else row_output_mode,
+            compress_rows=args.compress_rows,
             write_plots=not args.skip_plots,
         )
         return
@@ -159,7 +174,8 @@ def main() -> None:
         result = run_single_evaluation(
             config,
             run_output_dir,
-            write_rows=not args.skip_rows,
+            row_output_mode=row_output_mode_for_run(row_output_mode, index),
+            compress_rows=args.compress_rows,
             write_plots=not args.skip_plots,
         )
         run_records.append(result["run_record"])
@@ -169,11 +185,23 @@ def main() -> None:
         profile=args.profile,
         repeat_seeds=args.repeat_seeds,
         seed_step=args.seed_step,
-        write_rows=not args.skip_rows,
+        row_output_mode=row_output_mode,
         write_plots=not args.skip_plots,
     )
     write_json(output_dir / "campaign_summary.json", campaign_summary)
     write_csv(output_dir / "campaign_runs.csv", build_campaign_rows(run_records))
+
+
+def effective_row_output_mode(args: argparse.Namespace) -> str:
+    if args.skip_rows:
+        return "none"
+    return str(args.row_output_mode)
+
+
+def row_output_mode_for_run(row_output_mode: str, run_index: int) -> str:
+    if row_output_mode == "first-figure":
+        return "figure" if run_index == 0 else "none"
+    return row_output_mode
 
 
 def build_config(args: argparse.Namespace, *, seed: int) -> EvaluationConfig:
@@ -209,7 +237,8 @@ def run_single_evaluation(
     config: EvaluationConfig,
     output_dir: Path,
     *,
-    write_rows: bool,
+    row_output_mode: str,
+    compress_rows: bool,
     write_plots: bool,
 ) -> dict[str, Any]:
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -244,17 +273,27 @@ def run_single_evaluation(
         "near_threshold": {
             "summary_rows": near_threshold_results["summary_rows"],
             "margin_summary": near_threshold_results["margin_summary"],
+            "default_margin_summary": near_threshold_results["default_margin_summary"],
         },
         "narrative_scenarios": narrative,
         "kernel_runtime": kernel_runtime,
     }
     write_json(output_dir / "summary.json", summary)
+    write_csv(output_dir / "stress_map_source.csv", build_stress_map_source_rows(mixed_results["rows"]))
+    write_csv(
+        output_dir / "near_threshold_default_margin_summary.csv",
+        near_threshold_results["default_margin_summary"],
+    )
 
-    if write_rows:
-        write_csv(output_dir / "straight_suite_rows.csv", straight_results["rows"])
-        write_csv(output_dir / "mixed_turn_rows.csv", mixed_results["rows"])
-        write_csv(output_dir / "near_threshold_rows.csv", near_threshold_results["rows"])
-        write_csv(output_dir / "sampled_proxy_miss_counterexample.csv", [narrative["sampled_proxy_miss"]])
+    write_row_outputs(
+        output_dir,
+        row_output_mode=row_output_mode,
+        compress_rows=compress_rows,
+        straight_rows=straight_results["rows"],
+        mixed_rows=mixed_results["rows"],
+        near_threshold_rows=near_threshold_results["rows"],
+        sampled_proxy_miss=narrative["sampled_proxy_miss"],
+    )
 
     write_csv(output_dir / "table_1_experiment_design.csv", build_table_1(config))
     write_csv(output_dir / "table_2_straight_exactness.csv", build_table_2(straight_results["summary"]))
@@ -359,6 +398,32 @@ def build_run_record(
     }
 
 
+def write_row_outputs(
+    output_dir: Path,
+    *,
+    row_output_mode: str,
+    compress_rows: bool,
+    straight_rows: list[dict[str, Any]],
+    mixed_rows: list[dict[str, Any]],
+    near_threshold_rows: list[dict[str, Any]],
+    sampled_proxy_miss: dict[str, Any],
+) -> None:
+    suffix = ".csv.gz" if compress_rows else ".csv"
+    if row_output_mode == "none":
+        return
+    if row_output_mode == "figure":
+        write_csv(output_dir / f"mixed_turn_rows{suffix}", mixed_rows)
+        write_csv(output_dir / "sampled_proxy_miss_counterexample.csv", [sampled_proxy_miss])
+        return
+    if row_output_mode == "all":
+        write_csv(output_dir / f"straight_suite_rows{suffix}", straight_rows)
+        write_csv(output_dir / f"mixed_turn_rows{suffix}", mixed_rows)
+        write_csv(output_dir / f"near_threshold_rows{suffix}", near_threshold_rows)
+        write_csv(output_dir / "sampled_proxy_miss_counterexample.csv", [sampled_proxy_miss])
+        return
+    raise ValueError(f"Unsupported row_output_mode={row_output_mode!r}")
+
+
 def aggregate_existing_runs(
     run_dirs: list[Path],
     output_dir: Path,
@@ -388,7 +453,7 @@ def aggregate_existing_runs(
         profile=inferred_profile,
         repeat_seeds=len(run_records),
         seed_step=seed_step,
-        write_rows=False,
+        row_output_mode="none",
         write_plots=False,
     )
     write_json(output_dir / "campaign_summary.json", campaign_summary)
@@ -411,13 +476,17 @@ def render_existing_figures(
     figure_formats: tuple[str, ...],
 ) -> None:
     summary = read_json(run_dir / "summary.json")
-    straight_rows_path = run_dir / "straight_suite_rows.csv"
-    mixed_rows_path = run_dir / "mixed_turn_rows.csv"
-    near_threshold_rows_path = run_dir / "near_threshold_rows.csv"
-    if not mixed_rows_path.exists():
-        raise FileNotFoundError(f"Expected mixed_turn_rows.csv in {run_dir}")
-    mixed_rows = read_csv_rows(mixed_rows_path)
-    if straight_rows_path.exists() and near_threshold_rows_path.exists():
+    straight_rows_path = find_csv_or_gzip(run_dir / "straight_suite_rows.csv")
+    mixed_rows_path = find_csv_or_gzip(run_dir / "mixed_turn_rows.csv")
+    near_threshold_rows_path = find_csv_or_gzip(run_dir / "near_threshold_rows.csv")
+    stress_map_source_path = find_csv_or_gzip(run_dir / "stress_map_source.csv")
+    mixed_rows = read_csv_rows(mixed_rows_path) if mixed_rows_path is not None else []
+    stress_map_rows = read_csv_rows(stress_map_source_path) if stress_map_source_path is not None else []
+    if not mixed_rows and not stress_map_rows:
+        raise FileNotFoundError(
+            f"Expected mixed_turn_rows.csv(.gz) or stress_map_source.csv(.gz) in {run_dir}"
+        )
+    if straight_rows_path is not None and near_threshold_rows_path is not None:
         narrative = select_narrative_scenarios(
             read_csv_rows(straight_rows_path),
             mixed_rows,
@@ -432,6 +501,7 @@ def render_existing_figures(
         output_dir,
         narrative=narrative,
         mixed_rows=mixed_rows,
+        stress_map_rows=stress_map_rows,
         ablation_rows=summary["near_threshold"]["summary_rows"],
         figure_formats=figure_formats,
         manuscript_names=True,
@@ -443,10 +513,12 @@ def render_figure_set(
     *,
     narrative: dict[str, dict[str, Any]],
     mixed_rows: list[dict[str, Any]],
+    stress_map_rows: list[dict[str, Any]] | None = None,
     ablation_rows: list[dict[str, Any]],
     figure_formats: tuple[str, ...],
     manuscript_names: bool,
 ) -> None:
+    configure_manuscript_plot_style()
     specs = [
         (
             "fig_crossing" if manuscript_names else "figure_1_crossing",
@@ -458,7 +530,9 @@ def render_figure_set(
         ),
         (
             "fig_stress_maps" if manuscript_names else "figure_3_stress_maps",
-            lambda path: plot_stress_maps(path, mixed_rows),
+            lambda path: plot_stress_maps_from_source(path, stress_map_rows)
+            if stress_map_rows
+            else plot_stress_maps(path, mixed_rows),
         ),
         (
             "fig_ablation" if manuscript_names else "figure_4_ablation",
@@ -477,6 +551,26 @@ def render_figure_set(
     for base_name, plotter in specs:
         for figure_format in figure_formats:
             plotter(output_dir / f"{base_name}.{figure_format.lower()}")
+
+
+def configure_manuscript_plot_style() -> None:
+    """Use manuscript-style fonts and embed TrueType text in generated PDFs."""
+    plt.rcParams.update(
+        {
+            "font.family": "serif",
+            "font.serif": MANUSCRIPT_FONT_FAMILY,
+            "mathtext.fontset": "stix",
+            "font.size": 12.5,
+            "axes.titlesize": 15.0,
+            "axes.labelsize": 14.0,
+            "xtick.labelsize": 12.5,
+            "ytick.labelsize": 12.5,
+            "legend.fontsize": 12.5,
+            "pdf.fonttype": 42,
+            "ps.fonttype": 42,
+            "axes.unicode_minus": False,
+        }
+    )
 
 
 def validate_existing_run_summaries(loaded: list[dict[str, Any]]) -> None:
@@ -745,7 +839,7 @@ def build_campaign_summary(
     profile: str,
     repeat_seeds: int,
     seed_step: int,
-    write_rows: bool,
+    row_output_mode: str,
     write_plots: bool,
 ) -> dict[str, Any]:
     straight_total_n = sum(int(record["straight"]["n"]) for record in run_records)
@@ -784,7 +878,8 @@ def build_campaign_summary(
         "profile": profile,
         "repeat_seeds": repeat_seeds,
         "seed_step": seed_step,
-        "write_rows": write_rows,
+        "row_output_mode": row_output_mode,
+        "write_rows": row_output_mode != "none",
         "write_plots": write_plots,
         "seeds": [int(record["seed"]) for record in run_records],
         "runs": run_records,
@@ -1095,7 +1190,7 @@ def plot_sampled_proxy_miss(path: Path, row: dict[str, Any], *, sample_dt_s: flo
     style_axes(ax)
     margin_nmi = (dense_distances - encounter.separation_threshold_m) / NMI_TO_M
     ax.axhline(0.0, color="#444444", linestyle=":", linewidth=1.2, label="Threshold")
-    ax.fill_between(dense_times, margin_nmi, 0.0, where=margin_nmi < 0.0, color="#d95f5f", alpha=0.16)
+    ax.fill_between(dense_times, margin_nmi, 0.0, where=margin_nmi < 0.0, color="#d95f5f", alpha=0.5)
     ax.plot(
         dense_times,
         margin_nmi,
@@ -1117,7 +1212,7 @@ def plot_sampled_proxy_miss(path: Path, row: dict[str, Any], *, sample_dt_s: flo
     )
     ax.set_xlabel("Time (s)")
     ax.set_ylabel("Clearance margin (NMI)")
-    ax.set_title(f"{sample_dt_s:g} s sampled heuristic near a short unsafe interval")
+    ax.set_title("Sampled heuristic near a short unsafe interval")
     ax.legend(loc="upper right", frameon=True, framealpha=0.95)
     fig.tight_layout()
     save_figure(fig, path)
@@ -1125,7 +1220,7 @@ def plot_sampled_proxy_miss(path: Path, row: dict[str, Any], *, sample_dt_s: flo
 
 
 def plot_stress_maps(path: Path, rows: list[dict[str, Any]]) -> None:
-    fig, axes = plt.subplots(1, 2, figsize=(11.6, 4.8))
+    fig, axes = plt.subplots(1, 2, figsize=(11.2, 4.55))
     plot_heatmap(
         ax=axes[0],
         rows=rows,
@@ -1135,9 +1230,9 @@ def plot_stress_maps(path: Path, rows: list[dict[str, Any]]) -> None:
         y_getter=lambda row: row["max_turn_angle_deg"],
         mask=lambda row: row["reference_is_safe"] == 1,
         value=lambda row: row["proposed_is_safe"],
-        title="Certification rate on safe cases",
+        title="Proposed method: certification on safe cases",
         xlabel="Dense-reference safe margin (NMI)",
-        ylabel="Max turn angle (deg)",
+        ylabel="Maximum turn angle (deg)",
         cmap="Blues",
         colorbar_label="Rate",
         x_decimals=2,
@@ -1154,9 +1249,9 @@ def plot_stress_maps(path: Path, rows: list[dict[str, Any]]) -> None:
         y_getter=lambda row: row["max_turn_angle_deg"],
         mask=lambda row: row["eligible_for_boolean_tallies"] == 1 and row["reference_is_safe"] == 0,
         value=lambda row: row["nominal_proxy_is_safe"],
-        title="Nominal false-safe rate on unsafe cases",
+        title="Nominal proxy: false-safe rate on unsafe cases",
         xlabel="Speed uncertainty (kt)",
-        ylabel="Max turn angle (deg)",
+        ylabel="Maximum turn angle (deg)",
         cmap="OrRd",
         colorbar_label="Rate",
         x_decimals=0,
@@ -1164,14 +1259,132 @@ def plot_stress_maps(path: Path, rows: list[dict[str, Any]]) -> None:
         x_lower_start=5.0,
         y_lower_start=0.0,
     )
-    fig.tight_layout()
+    fig.tight_layout(w_pad=2.6)
+    save_figure(fig, path)
+    plt.close(fig)
+
+
+def build_stress_map_source_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    output_rows = []
+    output_rows.extend(
+        build_heatmap_source_rows(
+            rows=rows,
+            panel="proposed_certification",
+            title="Proposed method: certification on safe cases",
+            xlabel="Dense-reference safe margin (NMI)",
+            ylabel="Maximum turn angle (deg)",
+            x_edges=MARGIN_BINS_NMI,
+            y_edges=TURN_ANGLE_BINS_DEG[1:],
+            x_getter=lambda row: max(row["reference_margin_m"] / NMI_TO_M, 0.0),
+            y_getter=lambda row: row["max_turn_angle_deg"],
+            mask=lambda row: row["reference_is_safe"] == 1,
+            value=lambda row: row["proposed_is_safe"],
+            x_decimals=2,
+            y_decimals=0,
+            x_lower_start=0.0,
+            y_lower_start=0.0,
+        )
+    )
+    output_rows.extend(
+        build_heatmap_source_rows(
+            rows=rows,
+            panel="nominal_false_safe",
+            title="Nominal proxy: false-safe rate on unsafe cases",
+            xlabel="Speed uncertainty (kt)",
+            ylabel="Maximum turn angle (deg)",
+            x_edges=SPEED_UNCERTAINTY_BINS_KT[1:],
+            y_edges=TURN_ANGLE_BINS_DEG[1:],
+            x_getter=lambda row: row["speed_diff_kt"],
+            y_getter=lambda row: row["max_turn_angle_deg"],
+            mask=lambda row: row["eligible_for_boolean_tallies"] == 1 and row["reference_is_safe"] == 0,
+            value=lambda row: row["nominal_proxy_is_safe"],
+            x_decimals=0,
+            y_decimals=0,
+            x_lower_start=5.0,
+            y_lower_start=0.0,
+        )
+    )
+    return output_rows
+
+
+def build_heatmap_source_rows(
+    *,
+    rows: list[dict[str, Any]],
+    panel: str,
+    title: str,
+    xlabel: str,
+    ylabel: str,
+    x_edges: tuple[float, ...],
+    y_edges: tuple[float, ...],
+    x_getter: Callable[[dict[str, Any]], float],
+    y_getter: Callable[[dict[str, Any]], float],
+    mask: Callable[[dict[str, Any]], bool],
+    value: Callable[[dict[str, Any]], float | int],
+    x_decimals: int,
+    y_decimals: int,
+    x_lower_start: float,
+    y_lower_start: float,
+) -> list[dict[str, Any]]:
+    x_bins = np.asarray(x_edges, dtype=np.float64)
+    y_bins = np.asarray(y_edges, dtype=np.float64)
+    x_labels = format_interval_labels(x_bins, decimals=x_decimals, lower_start=x_lower_start)
+    y_labels = format_interval_labels(y_bins, decimals=y_decimals, lower_start=y_lower_start)
+    output_rows = []
+    for yi, y_upper in enumerate(y_bins):
+        y_lower = y_lower_start if yi == 0 else y_bins[yi - 1]
+        for xi, x_upper in enumerate(x_bins):
+            x_lower = x_lower_start if xi == 0 else x_bins[xi - 1]
+            bucket = [
+                row
+                for row in rows
+                if mask(row) and x_lower <= float(x_getter(row)) < x_upper and y_lower <= float(y_getter(row)) < y_upper
+            ]
+            numerator = float(np.sum([float(value(row)) for row in bucket])) if bucket else 0.0
+            numerator_n = round(numerator)
+            denominator = len(bucket)
+            output_rows.append(
+                {
+                    "panel": panel,
+                    "title": title,
+                    "xlabel": xlabel,
+                    "ylabel": ylabel,
+                    "x_index": xi,
+                    "y_index": yi,
+                    "x_label": x_labels[xi],
+                    "y_label": y_labels[yi],
+                    "x_lower": float(x_lower),
+                    "x_upper": float(x_upper),
+                    "y_lower": float(y_lower),
+                    "y_upper": float(y_upper),
+                    "numerator_n": numerator_n,
+                    "denominator_n": denominator,
+                    "rate": safe_divide(numerator_n, denominator) if denominator else float("nan"),
+                }
+            )
+    return output_rows
+
+
+def plot_stress_maps_from_source(path: Path, source_rows: list[dict[str, Any]] | None) -> None:
+    if not source_rows:
+        raise ValueError("Stress-map source rows are required.")
+    fig, axes = plt.subplots(1, 2, figsize=(11.2, 4.55))
+    for ax, panel, cmap in (
+        (axes[0], "proposed_certification", "Blues"),
+        (axes[1], "nominal_false_safe", "OrRd"),
+    ):
+        panel_rows = [row for row in source_rows if row["panel"] == panel]
+        if not panel_rows:
+            raise ValueError(f"Missing stress-map source rows for panel={panel!r}.")
+        plot_heatmap_source_panel(ax=ax, rows=panel_rows, cmap=cmap)
+    fig.tight_layout(w_pad=2.6)
     save_figure(fig, path)
     plt.close(fig)
 
 
 def plot_ablation(path: Path, summary_rows: list[dict[str, Any]]) -> None:
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(11.6, 4.8), sharex=True)
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(11.0, 4.45), sharex=True)
     palette = {"local": "#1f4e79", "global": "#b55d1d"}
+    labels = {"local": "Interval-local", "global": "Global"}
     for lipschitz_mode in ("local", "global"):
         subset = [row for row in summary_rows if row["lipschitz_mode"] == lipschitz_mode]
         subset.sort(key=lambda row: row["dt_min_s"])
@@ -1179,25 +1392,41 @@ def plot_ablation(path: Path, summary_rows: list[dict[str, Any]]) -> None:
         certification = [row["certification_rate"] for row in subset]
         eval_counts = [row["median_fixed_time_evals"] for row in subset]
         color = palette[lipschitz_mode]
-        ax1.plot(dt_values, certification, marker="o", linewidth=2.2, color=color, label=lipschitz_mode.capitalize())
-        ax2.plot(dt_values, eval_counts, marker="s", linewidth=2.2, color=color, label=lipschitz_mode.capitalize())
+        ax1.plot(
+            dt_values,
+            certification,
+            marker="o",
+            linewidth=2.2,
+            markersize=6.2,
+            color=color,
+            label=labels[lipschitz_mode],
+        )
+        ax2.plot(
+            dt_values,
+            eval_counts,
+            marker="s",
+            linewidth=2.2,
+            markersize=6.0,
+            color=color,
+            label=labels[lipschitz_mode],
+        )
     style_axes(ax1)
     style_axes(ax2)
-    ax1.set_xlabel("dt_min (s)", fontsize=13)
-    ax1.set_ylabel("Certification rate", fontsize=13)
-    ax1.set_title("Certification", fontsize=14)
+    ax1.set_xlabel(r"Minimum interval width, $\Delta t_{\min}$ (s)", fontsize=15.5)
+    ax1.set_ylabel("Certification rate", fontsize=15.5)
+    ax1.set_title("Certification rate", fontsize=18.0, pad=8)
     ax1.yaxis.set_major_formatter(ticker.PercentFormatter(xmax=1.0, decimals=0))
     ax1.set_ylim(0.5, 1.01)
-    ax2.set_xlabel("dt_min (s)", fontsize=13)
-    ax2.set_ylabel("Median fixed-time hull evaluations", fontsize=13)
-    ax2.set_title("Subdivision work", fontsize=14)
-    ax2.set_ylim(bottom=0.0)
+    ax2.set_xlabel(r"Minimum interval width, $\Delta t_{\min}$ (s)", fontsize=15.5)
+    ax2.set_ylabel("Median fixed-time hull evaluations", fontsize=15.5)
+    ax2.set_title("Subdivision work", fontsize=18.0, pad=8)
+    ax2.set_ylim(0.0, 13.25)
     ax1.set_xticks([1.0, 3.0, 6.0, 12.0])
     ax2.set_xticks([1.0, 3.0, 6.0, 12.0])
-    ax1.tick_params(axis="both", labelsize=11)
-    ax2.tick_params(axis="both", labelsize=11)
-    ax2.legend(loc="lower right", frameon=True, framealpha=0.95, fontsize=12)
-    fig.tight_layout()
+    ax1.tick_params(axis="both", labelsize=14.0)
+    ax2.tick_params(axis="both", labelsize=14.0)
+    ax2.legend(loc="lower right", frameon=True, framealpha=0.95, fontsize=14.0)
+    fig.tight_layout(w_pad=2.4)
     save_figure(fig, path)
     plt.close(fig)
 
@@ -1261,6 +1490,92 @@ def nominal_path(encounter: Encounter, *, aircraft: str, times_s: np.ndarray) ->
     return path
 
 
+def plot_heatmap_source_panel(
+    *,
+    ax: plt.Axes,
+    rows: list[dict[str, Any]],
+    cmap: str,
+) -> None:
+    x_count = max(int(row["x_index"]) for row in rows) + 1
+    y_count = max(int(row["y_index"]) for row in rows) + 1
+    grid = np.full((y_count, x_count), np.nan, dtype=np.float64)
+    x_labels = [""] * x_count
+    y_labels = [""] * y_count
+    for row in rows:
+        xi = int(row["x_index"])
+        yi = int(row["y_index"])
+        grid[yi, xi] = float(row["rate"])
+        x_labels[xi] = str(row["x_label"])
+        y_labels[yi] = str(row["y_label"])
+
+    first_row = rows[0]
+    draw_heatmap_grid(
+        ax=ax,
+        grid=grid,
+        x_labels=x_labels,
+        y_labels=y_labels,
+        title=str(first_row["title"]),
+        xlabel=str(first_row["xlabel"]),
+        ylabel=str(first_row["ylabel"]),
+        cmap=cmap,
+        colorbar_label="Rate",
+    )
+
+
+def draw_heatmap_grid(
+    *,
+    ax: plt.Axes,
+    grid: np.ndarray,
+    x_labels: list[str],
+    y_labels: list[str],
+    title: str,
+    xlabel: str,
+    ylabel: str,
+    cmap: str,
+    colorbar_label: str,
+) -> None:
+    masked = np.ma.masked_invalid(grid)
+    mesh = ax.pcolormesh(
+        np.arange(grid.shape[1] + 1),
+        np.arange(grid.shape[0] + 1),
+        masked,
+        vmin=0.0,
+        vmax=1.0,
+        cmap=cmap,
+        edgecolors="white",
+        linewidth=0.8,
+        shading="flat",
+    )
+    style_axes(ax, grid=False)
+    ax.set_xticks(np.arange(grid.shape[1]) + 0.5)
+    ax.set_xticklabels(x_labels, rotation=32, ha="right")
+    ax.set_yticks(np.arange(grid.shape[0]) + 0.5)
+    ax.set_yticklabels(y_labels)
+    ax.set_title(title, fontsize=18.0, pad=8)
+    ax.set_xlabel(xlabel, fontsize=16.0)
+    ax.set_ylabel(ylabel, fontsize=16.0)
+    ax.tick_params(axis="both", labelsize=13.5)
+    for yi in range(grid.shape[0]):
+        for xi in range(grid.shape[1]):
+            value_at_cell = grid[yi, xi]
+            if np.isnan(value_at_cell):
+                continue
+            text_color = "white" if value_at_cell >= 0.55 else "#222222"
+            ax.text(
+                xi + 0.5,
+                yi + 0.5,
+                f"{100.0 * value_at_cell:.0f}%",
+                ha="center",
+                va="center",
+                color=text_color,
+                fontsize=13.0,
+            )
+    colorbar = plt.colorbar(mesh, ax=ax, fraction=0.046, pad=0.04)
+    colorbar.ax.yaxis.set_major_formatter(ticker.PercentFormatter(xmax=1.0, decimals=0))
+    colorbar.set_label(colorbar_label, fontsize=15.0)
+    colorbar.ax.tick_params(labelsize=13.5)
+
+
 def plot_heatmap(
     *,
     ax: plt.Axes,
@@ -1295,50 +1610,17 @@ def plot_heatmap(
             ]
             if bucket:
                 grid[yi, xi] = float(np.mean([float(value(row)) for row in bucket]))
-    masked = np.ma.masked_invalid(grid)
-    mesh = ax.pcolormesh(
-        np.arange(len(x_bins) + 1),
-        np.arange(len(y_bins) + 1),
-        masked,
-        vmin=0.0,
-        vmax=1.0,
+    draw_heatmap_grid(
+        ax=ax,
+        grid=grid,
+        x_labels=format_interval_labels(x_bins, decimals=x_decimals, lower_start=x_lower_start),
+        y_labels=format_interval_labels(y_bins, decimals=y_decimals, lower_start=y_lower_start),
+        title=title,
+        xlabel=xlabel,
+        ylabel=ylabel,
         cmap=cmap,
-        edgecolors="white",
-        linewidth=0.8,
-        shading="flat",
+        colorbar_label=colorbar_label,
     )
-    style_axes(ax, grid=False)
-    ax.set_xticks(np.arange(len(x_bins)) + 0.5)
-    ax.set_xticklabels(
-        format_interval_labels(x_bins, decimals=x_decimals, lower_start=x_lower_start),
-        rotation=35,
-        ha="right",
-    )
-    ax.set_yticks(np.arange(len(y_bins)) + 0.5)
-    ax.set_yticklabels(format_interval_labels(y_bins, decimals=y_decimals, lower_start=y_lower_start))
-    ax.set_title(title, fontsize=14)
-    ax.set_xlabel(xlabel, fontsize=13)
-    ax.set_ylabel(ylabel, fontsize=13)
-    ax.tick_params(axis="both", labelsize=11)
-    for yi in range(grid.shape[0]):
-        for xi in range(grid.shape[1]):
-            value_at_cell = grid[yi, xi]
-            if np.isnan(value_at_cell):
-                continue
-            text_color = "white" if value_at_cell >= 0.55 else "#222222"
-            ax.text(
-                xi + 0.5,
-                yi + 0.5,
-                f"{100.0 * value_at_cell:.0f}%",
-                ha="center",
-                va="center",
-                color=text_color,
-                fontsize=10,
-            )
-    colorbar = plt.colorbar(mesh, ax=ax, fraction=0.046, pad=0.04)
-    colorbar.ax.yaxis.set_major_formatter(ticker.PercentFormatter(xmax=1.0, decimals=0))
-    colorbar.set_label(colorbar_label, fontsize=12)
-    colorbar.ax.tick_params(labelsize=11)
 
 
 def encounter_from_row(row: dict[str, Any]) -> Encounter:
@@ -1440,8 +1722,18 @@ def read_json(path: Path) -> dict[str, Any]:
         return json.load(handle)
 
 
+def find_csv_or_gzip(path: Path) -> Path | None:
+    if path.exists():
+        return path
+    gzip_path = path.with_suffix(path.suffix + ".gz")
+    if gzip_path.exists():
+        return gzip_path
+    return None
+
+
 def read_csv_rows(path: Path) -> list[dict[str, Any]]:
-    with path.open("r", encoding="utf-8", newline="") as handle:
+    opener = gzip.open if path.suffix == ".gz" else Path.open
+    with opener(path, "rt", encoding="utf-8", newline="") as handle:
         reader = csv.DictReader(handle)
         return [{key: coerce_csv_value(value) for key, value in row.items()} for row in reader]
 
@@ -1470,7 +1762,8 @@ def write_csv(path: Path, rows: list[dict[str, Any]]) -> None:
         path.write_text("", encoding="utf-8")
         return
     fieldnames = sorted({key for row in rows for key in row})
-    with path.open("w", newline="", encoding="utf-8") as handle:
+    opener = gzip.open if path.suffix == ".gz" else Path.open
+    with opener(path, "wt", newline="", encoding="utf-8") as handle:
         writer = csv.DictWriter(handle, fieldnames=fieldnames)
         writer.writeheader()
         writer.writerows(rows)
