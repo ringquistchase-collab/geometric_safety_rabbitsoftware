@@ -1,8 +1,8 @@
 """
-Tests for the turn-aware catch-up projection interval (CUPI).
+Tests for the turn-aware lateral separation solver.
 
 Covers:
-1. Regression: straight-straight equivalence with the exact straight-line CUPI
+1. Regression: straight-straight equivalence with the exact straight-line solver
 2. Helper-function tests for the current turn-aware geometry
 3. During-turn validation against numerical integration
 4. Full-horizon validation against numerical trajectory simulation
@@ -168,7 +168,7 @@ def _local_xy_to_latlon(east_m: float, north_m: float, ref_lat: float, ref_lon: 
 
 
 class TestStraightStraightRegression:
-    """Verify turn-aware CUPI gives identical results to original CUPI for straight pairs."""
+    """Verify the turn-aware solver matches the straight solver for straight pairs."""
 
     @pytest.mark.parametrize("a_heading", [0, 45, 90, 135, 180, 270])
     @pytest.mark.parametrize("b_heading", [0, 45, 90, 180, 270])
@@ -1392,7 +1392,7 @@ class TestEndToEnd:
 
 class TestEdgeCases:
     def test_turn_angle_zero(self):
-        """Turn angle == 0 (heading0 == target) should delegate to straight CUPI."""
+        """Turn angle == 0 (heading0 == target) should delegate to the straight solver."""
         a_lat, a_lon = 51.0, -1.0
         b_lat, b_lon = 51.02, -0.98
 
@@ -1523,7 +1523,7 @@ class TestEdgeCases:
             projection_time_s=600.0,
         )
 
-        # Should use target headings for straight-line CUPI
+        # Should use target headings for the straight-line solver.
         result_ref = catch_up_projection_interval(
             a_lat=a_lat,
             a_lon=a_lon,

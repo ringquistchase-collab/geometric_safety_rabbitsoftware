@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Benchmark isolated CUPI (catch-up projection interval) timings.
+Benchmark isolated lateral-solver timings.
 
 Measures warm-path latency of `catch_up_projection_interval_with_turns` across a few
 representative scenarios and a random mixed-turn sweep.
@@ -27,7 +27,7 @@ from geometric_safety.util import DEG_TO_RAD, EARTH_RADIUS_IN_METERS, NMI_TO_M, 
 
 @dataclass(frozen=True)
 class Scenario:
-    """One isolated CUPI benchmark case."""
+    """One isolated lateral-solver benchmark case."""
 
     name: str
     kwargs: TurnAwareKwargs
@@ -63,12 +63,12 @@ def local_xy_to_latlon(east_m: float, north_m: float, ref_lat: float, ref_lon: f
 
 
 def run_turn_aware(kwargs: TurnAwareKwargs) -> tuple[bool, float, float]:
-    """Call the compiled turn-aware CUPI with typed kwargs."""
+    """Call the compiled turn-aware lateral solver with typed kwargs."""
     return ra.catch_up_projection_interval_with_turns(**kwargs)
 
 
 def run_turn_aware_python(kwargs: TurnAwareKwargs) -> tuple[bool, float, float]:
-    """Call the Python shadow of the turn-aware CUPI with typed kwargs."""
+    """Call the Python shadow of the turn-aware lateral solver with typed kwargs."""
     py_func = typing.cast(typing.Any, ra.catch_up_projection_interval_with_turns).py_func
     return typing.cast(tuple[bool, float, float], py_func(**kwargs))
 
@@ -114,7 +114,7 @@ def count_fixed_time_evals(kwargs: TurnAwareKwargs) -> tuple[int, tuple[bool, fl
 
 
 def build_isolated_scenarios() -> list[Scenario]:
-    """Construct representative isolated CUPI cases."""
+    """Construct representative isolated lateral-solver cases."""
     scenarios: list[Scenario] = [
         Scenario(
             name="straight_delegate",
@@ -214,7 +214,7 @@ def build_isolated_scenarios() -> list[Scenario]:
 
 
 def run_isolated_benchmarks(random_cases: int) -> None:
-    """Print repeatable isolated CUPI timing numbers."""
+    """Print repeatable isolated lateral-solver timing numbers."""
     scenarios = build_isolated_scenarios()
 
     # Warm the compiled path once before timing.
@@ -237,7 +237,7 @@ def run_isolated_benchmarks(random_cases: int) -> None:
     )
 
     print("=" * 88)
-    print("Isolated CUPI Benchmarks")
+    print("Isolated Lateral-Solver Benchmarks")
     print("=" * 88)
     print("Representative warm-path timings")
     print("name, safe, min_dist_nmi, closest_time_s, fixed_time_evals_py, mean_us, median_us, max_us")
@@ -332,7 +332,7 @@ def run_isolated_benchmarks(random_cases: int) -> None:
 
 def parse_args() -> argparse.Namespace:
     """Parse command-line arguments."""
-    parser = argparse.ArgumentParser(description="Benchmark isolated CUPI separation checks.")
+    parser = argparse.ArgumentParser(description="Benchmark isolated lateral separation checks.")
     parser.add_argument(
         "--random-cases",
         type=int,

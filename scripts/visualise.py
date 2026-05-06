@@ -234,7 +234,7 @@ if __name__ == "__main__":
             a_turn_end_s = turn_duration_s(a_h0, a_ht, a_turn_rate_deg_sec)
             b_turn_end_s = turn_duration_s(b_h0, b_ht, b_turn_rate_deg_sec)
 
-            # Run the turn-aware CUPI
+            # Run the turn-aware lateral solver.
             is_sep, min_dist, closest_time = catch_up_projection_interval_with_turns(
                 a_lat=a_lat_v,
                 a_lon=a_lon_v,
@@ -253,7 +253,7 @@ if __name__ == "__main__":
                 projection_time_s=proj_s,
             )
 
-            # Work in the same local XY frame as the CUPI calculations.
+            # Work in the same local XY frame as the lateral-solver calculations.
             a_xy0 = latlon_to_local_xy(a_lat_v, a_lon_v, a_lat_v, a_lon_v)
             b_xy0 = latlon_to_local_xy(b_lat_v, b_lon_v, a_lat_v, a_lon_v)
             rel_pos0 = a_xy0 - b_xy0  # pyright: ignore[reportOperatorIssue]
