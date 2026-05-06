@@ -1,9 +1,14 @@
 """Tests for the projection sanity-check helpers."""
 
+import csv
+import gzip
+from pathlib import Path
+
 import numpy as np
 
 from geometric_safety.util import NMI_TO_M
 from paper.evaluation import Encounter
+from paper.plot_projection_sweep import load_row_files
 from paper.projection_plotting import render_projection_diagnostic_plots
 from paper.projection_sanity import (
     ProjectionDeterministicSweepConfig,
@@ -170,3 +175,24 @@ def test_render_projection_diagnostic_plots_smoke(tmp_path) -> None:
 
     assert len(output_paths) == 4
     assert all(path.exists() for path in output_paths)
+
+
+def test_projection_row_loader_ignores_partial_csv_suffixes(tmp_path: Path) -> None:
+    csv_path = tmp_path / "straight_rows_lat_51.csv"
+    with csv_path.open("w", encoding="utf-8", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=["suite_name", "value"])
+        writer.writeheader()
+        writer.writerow({"suite_name": "straight_sweep", "value": "plain"})
+
+    gz_path = tmp_path / "straight_rows_lat_52.csv.gz"
+    with gzip.open(gz_path, "wt", encoding="utf-8", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=["suite_name", "value"])
+        writer.writeheader()
+        writer.writerow({"suite_name": "straight_sweep", "value": "gzip"})
+
+    partial_path = tmp_path / "straight_rows_lat_53.csv.tmp"
+    partial_path.write_text("suite_name,value\nstraight_sweep,partial\n", encoding="utf-8")
+
+    rows = load_row_files(tmp_path, "straight_rows_lat_*.csv")
+
+    assert [row["value"] for row in rows] == ["plain", "gzip"]

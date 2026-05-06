@@ -96,7 +96,7 @@ def parse_args() -> argparse.Namespace:
         "--grid-density",
         type=int,
         default=600,
-        help="Grid density for the clearance-grid application figure.",
+        help="Grid density for the clearance-grid application figure; 600 evaluates 360,000 grid cells.",
     )
     parser.add_argument(
         "--manifest",

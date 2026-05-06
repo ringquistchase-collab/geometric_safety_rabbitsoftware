@@ -115,20 +115,21 @@ def load_summary(path: Path) -> dict[str, Any]:
 
 
 def load_projection_rows(input_dir: Path) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
-    straight_rows = load_row_files(input_dir, "straight_rows_lat_*.csv*")
-    mixed_turn_rows = load_row_files(input_dir, "mixed_turn_rows_lat_*.csv*")
+    straight_rows = load_row_files(input_dir, "straight_rows_lat_*.csv")
+    mixed_turn_rows = load_row_files(input_dir, "mixed_turn_rows_lat_*.csv")
     if straight_rows or mixed_turn_rows:
         return straight_rows, mixed_turn_rows
 
-    combined_rows = load_row_files(input_dir, "projection_rows.csv*")
+    combined_rows = load_row_files(input_dir, "projection_rows.csv")
     if not combined_rows:
         return [], []
     return split_combined_rows(combined_rows)
 
 
-def load_row_files(input_dir: Path, pattern: str) -> list[dict[str, Any]]:
+def load_row_files(input_dir: Path, csv_pattern: str) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
-    for path in sorted(input_dir.glob(pattern)):
+    paths = [*input_dir.glob(csv_pattern), *input_dir.glob(f"{csv_pattern}.gz")]
+    for path in sorted(paths):
         opener = gzip.open if path.suffix == ".gz" else Path.open
         with opener(path, "rt", encoding="utf-8", newline="") as handle:
             rows.extend(csv.DictReader(handle))

@@ -2,6 +2,7 @@
 set -euo pipefail
 
 run_root="${1:-paper_eval_outputs/paper_full_$(date +%Y%m%d_%H%M%S)}"
+# Default for a large multicore run host; set N_JOBS lower on smaller machines.
 n_jobs="${N_JOBS:-128}"
 profile="${PAPER_PROFILE:-large100k}"
 repeat_seeds="${REPEAT_SEEDS:-5}"

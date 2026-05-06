@@ -7,6 +7,8 @@ codebase, but is rendered as a static, colourblind-friendly manuscript figure.
 from __future__ import annotations
 
 import argparse
+from collections.abc import Iterator
+from contextlib import contextmanager, suppress
 import gzip
 import json
 import os
@@ -49,6 +51,18 @@ Y_RANGE_NM = (-10.0, 17.5)
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
+@contextmanager
+def prepended_sys_path(path: Path) -> Iterator[None]:
+    """Temporarily prefer imports from a local repository checkout."""
+    path_string = str(path)
+    sys.path.insert(0, path_string)
+    try:
+        yield
+    finally:
+        with suppress(ValueError):
+            sys.path.remove(path_string)
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -73,7 +87,7 @@ def parse_args() -> argparse.Namespace:
         "--grid-density",
         type=int,
         default=600,
-        help="Number of grid samples in each lateral direction.",
+        help="Number of grid samples in each lateral direction; 600 evaluates 360,000 grid cells.",
     )
     parser.add_argument(
         "--source-json",
@@ -153,14 +167,13 @@ def draw_heading_arrow(
 
 
 def load_grid_payload(library_root: Path, grid_density: int) -> tuple[object, object, dict]:
-    sys.path.insert(0, str(library_root))
-
-    from app import VisualParams  # pyright: ignore[reportMissingImports]
-    from geometric_safety.demo_utils import TURN_DEMO_SCENARIOS  # pyright: ignore[reportMissingImports]
-    from geometric_safety.relevant_aircraft import (
-        catch_up_projection_interval_with_turns,  # pyright: ignore[reportMissingImports]
-    )
-    from geometric_safety.util import NMI_TO_M  # pyright: ignore[reportMissingImports]
+    with prepended_sys_path(library_root):
+        from app import VisualParams  # pyright: ignore[reportMissingImports]
+        from geometric_safety.demo_utils import TURN_DEMO_SCENARIOS  # pyright: ignore[reportMissingImports]
+        from geometric_safety.relevant_aircraft import (
+            catch_up_projection_interval_with_turns,  # pyright: ignore[reportMissingImports]
+        )
+        from geometric_safety.util import NMI_TO_M  # pyright: ignore[reportMissingImports]
 
     scenario = next(item for item in TURN_DEMO_SCENARIOS if item.preset_id == "single_turn_dodge")
     params_dict = scenario.to_visual_params()
