@@ -3,6 +3,15 @@
 This file maps the manuscript's numerical claims and generated figures
 to the saved artifacts produced by the paper pipeline.
 
+The submitted-paper archive is included in this repository at:
+
+```text
+paper/results/paper_full_20260502_0738.tar.gz
+```
+
+Use this archive to verify the manuscript figures and numerical claims without
+rerunning the expensive full data stage.
+
 ## Full Data Stage
 
 Run:
@@ -68,18 +77,18 @@ Rendered outputs:
 | Near-threshold certification rate | first per-seed `summary.json` and `campaign_summary.json` |
 | Near-threshold certification by margin bin | first per-seed `near_threshold_default_margin_summary.csv` |
 | Runtime summary | first per-seed `table_4_runtime_summary.csv` and all per-seed `summary.json` files |
-| Projection disagreement and ambiguity-band counts | `paper/results/projection_deterministic_51_cap_100nmi.tar.gz` |
+| Projection disagreement and ambiguity-band counts | `projection_full/summary.json` and `projection_full/projection_rows.csv.gz` inside `paper/results/paper_full_20260502_0738.tar.gz` |
 
-## Manuscript Export
+## Figure Export
 
-The rendered figure set can be copied into a separate manuscript checkout with:
+The rendered figure set can be exported into any local output tree with:
 
 ```bash
+mkdir -p paper_figure_repro
 uv run python -m paper.reproduce_paper_outputs \
-  --manuscript-root /path/to/2026-03-geometric-safety-paper \
+  --output-root paper_figure_repro \
   --archive paper/results/<run>.tar.gz
 ```
 
-The manuscript repository still owns the LaTeX files and its
-manuscript-text fact checker, but the public code repository owns the
-figure-generation pipeline.
+The command writes figure PDFs and the figure manifest under
+`paper_figure_repro/manuscript/figures/`.

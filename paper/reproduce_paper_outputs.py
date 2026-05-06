@@ -1,9 +1,9 @@
-"""Populate a manuscript checkout with figures from the public paper pipeline.
+"""Export paper figure files from the public reproduction pipeline.
 
 The expensive empirical source data are produced by this repository's
 ``paper`` pipeline. This wrapper regenerates the explanatory application
 figures from the public code and copies the rendered empirical PDFs from a
-saved paper run into a LaTeX manuscript checkout.
+saved paper run into a local ``manuscript/figures/...`` output tree.
 """
 
 from __future__ import annotations
@@ -22,7 +22,7 @@ import tempfile
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_LIBRARY_ROOT = Path(os.environ.get("GEOMETRIC_SAFETY_ROOT", str(REPO_ROOT)))
-DEFAULT_MANUSCRIPT_ROOT = Path(os.environ["MANUSCRIPT_ROOT"]) if "MANUSCRIPT_ROOT" in os.environ else Path.cwd()
+DEFAULT_OUTPUT_ROOT = Path(os.environ.get("PAPER_FIGURE_OUTPUT_ROOT", str(Path.cwd())))
 
 APPLICATION_COMMANDS = [
     (
@@ -72,11 +72,14 @@ def parse_args() -> argparse.Namespace:
         help="Path to the geometric_safety repository.",
     )
     parser.add_argument(
-        "--manuscript-root",
+        "--output-root",
+        dest="manuscript_root",
         type=Path,
-        default=DEFAULT_MANUSCRIPT_ROOT,
-        help="Path to the manuscript repository checkout.",
+        default=DEFAULT_OUTPUT_ROOT,
+        metavar="OUTPUT_ROOT",
+        help="Destination root for the generated manuscript/figures layout.",
     )
+    parser.add_argument("--manuscript-root", dest="manuscript_root", type=Path, help=argparse.SUPPRESS)
     parser.add_argument(
         "--run-root",
         type=Path,
