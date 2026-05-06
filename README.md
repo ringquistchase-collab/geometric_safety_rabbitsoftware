@@ -4,11 +4,11 @@ Geometric reachability-based safety filtering for air traffic control.
 
 ## Overview
 
-This package implements the Catch-Up Projection Interval (CUPI)
-solver for lateral aircraft separation filtering. Given two aircraft
-with known positions, headings, speed bounds, and optional turn
-profiles, it determines whether they can possibly come within a
-separation threshold over a projection horizon.
+This package implements geometric safety filters for lateral aircraft
+separation. Given two aircraft with known positions, headings, speed
+bounds, and optional turn profiles, the lateral solvers determine
+whether the pair can possibly come within a separation threshold over a
+projection horizon.
 
 Two lateral solver variants:
 
@@ -26,8 +26,8 @@ The solver uses only numpy and numba (no ATC domain dependencies).
 
 The package also includes a vertical cleared-band timing check, which
 can be combined with the lateral solver. This vertical filtering is an
-engineering extension in the package, not part of the accompanying
-manuscript's CUPI method.
+engineering extension and is not used in the lateral-only paper
+experiments.
 
 Vertical filtering (`time_to_vertical_overlap_resolution`) assumes
 each aircraft climbs or descends from current flight level to selected
@@ -176,7 +176,7 @@ uv run pytest tests/test_relevant_aircraft_app.py
 
 ## Relevant-aircraft visualiser
 
-An interactive FastAPI interface for inspecting the CUPI geometry.
+An interactive FastAPI interface for inspecting the lateral safety geometry.
 Supports both fixed-heading and turn-aware modes.
 
 - **Fixed heading mode** — sweeps aircraft B's initial position
@@ -203,7 +203,7 @@ Then browse to <http://127.0.0.1:8000/>.
 
 ## Benchmarks
 
-Isolated CUPI timing benchmarks:
+Isolated lateral-solver timing benchmarks:
 
 ```bash
 uv run python scripts/benchmark_relevant_aircraft.py
@@ -211,11 +211,10 @@ uv run python scripts/benchmark_relevant_aircraft.py \
     --random-cases 5000
 ```
 
-## Paper evaluation
+## Paper Results
 
-The `paper/` directory contains the evaluation code for the
-accompanying manuscript. See [`paper/README.md`](paper/README.md)
-for reproduction instructions.
+Reproduce the paper figures and numerical checks with the scripts in
+[`paper/`](paper/README.md).
 
 ## Documentation
 

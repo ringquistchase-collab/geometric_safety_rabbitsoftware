@@ -45,3 +45,7 @@ venv/
 
 # Paper evaluation outputs
 paper_eval_outputs/
+paper_results/
+paper_figure_repro/
+paper/results/*.tar.gz
+!paper/results/paper_full_20260502_0738.tar.gz

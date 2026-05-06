@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import gzip
 import json
 from pathlib import Path
 from typing import Any
@@ -104,6 +105,12 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--quick", action="store_true", help="Run a smoke-sized deterministic sweep.")
     parser.add_argument("--skip-rows", action="store_true", help="Skip writing row-level CSV outputs.")
+    parser.add_argument("--compress-rows", action="store_true", help="Write row-level CSV outputs as gzip files.")
+    parser.add_argument(
+        "--combined-rows",
+        action="store_true",
+        help="Write one combined row-level CSV instead of separate straight and mixed-turn row files.",
+    )
     return parser.parse_args()
 
 
@@ -134,10 +141,23 @@ def main() -> None:
     output_dir = args.output_dir
     output_dir.mkdir(parents=True, exist_ok=True)
     result = run_projection_deterministic_sweep(config)
-    write_outputs(result, output_dir, write_rows=not args.skip_rows)
+    write_outputs(
+        result,
+        output_dir,
+        write_rows=not args.skip_rows,
+        compress_rows=args.compress_rows,
+        combined_rows=args.combined_rows,
+    )
 
 
-def write_outputs(result: dict[str, Any], output_dir: Path, *, write_rows: bool) -> None:
+def write_outputs(
+    result: dict[str, Any],
+    output_dir: Path,
+    *,
+    write_rows: bool,
+    compress_rows: bool,
+    combined_rows: bool,
+) -> None:
     payload = {
         "config": result["config"],
         "straight_summary": result["straight_summary"],
@@ -156,10 +176,38 @@ def write_outputs(result: dict[str, Any], output_dir: Path, *, write_rows: bool)
         result["mixed_turn_by_excursion_and_turn_count"],
     )
     if write_rows:
-        for latitude_deg, rows in result["straight_rows_by_latitude"].items():
-            write_csv(output_dir / f"straight_rows_lat_{format_latitude_tag(latitude_deg)}.csv", rows)
-        for latitude_deg, rows in result["mixed_turn_rows_by_latitude"].items():
-            write_csv(output_dir / f"mixed_turn_rows_lat_{format_latitude_tag(latitude_deg)}.csv", rows)
+        write_row_outputs(
+            output_dir,
+            straight_rows_by_latitude=result["straight_rows_by_latitude"],
+            mixed_turn_rows_by_latitude=result["mixed_turn_rows_by_latitude"],
+            compress_rows=compress_rows,
+            combined_rows=combined_rows,
+        )
+
+
+def write_row_outputs(
+    output_dir: Path,
+    *,
+    straight_rows_by_latitude: dict[float, list[dict[str, Any]]],
+    mixed_turn_rows_by_latitude: dict[float, list[dict[str, Any]]],
+    compress_rows: bool,
+    combined_rows: bool,
+) -> None:
+    suffix = ".csv.gz" if compress_rows else ".csv"
+    if combined_rows:
+        rows = [
+            row
+            for rows_by_latitude in (straight_rows_by_latitude, mixed_turn_rows_by_latitude)
+            for latitude_rows in rows_by_latitude.values()
+            for row in latitude_rows
+        ]
+        write_csv(output_dir / f"projection_rows{suffix}", rows)
+        return
+
+    for latitude_deg, rows in straight_rows_by_latitude.items():
+        write_csv(output_dir / f"straight_rows_lat_{format_latitude_tag(latitude_deg)}{suffix}", rows)
+    for latitude_deg, rows in mixed_turn_rows_by_latitude.items():
+        write_csv(output_dir / f"mixed_turn_rows_lat_{format_latitude_tag(latitude_deg)}{suffix}", rows)
 
 
 def format_latitude_tag(latitude_deg: float) -> str:
@@ -173,10 +221,21 @@ def write_json(path: Path, payload: dict[str, Any]) -> None:
 def write_csv(path: Path, rows: list[dict[str, Any]]) -> None:
     if not rows:
         raise ValueError(f"Cannot write empty CSV to {path}")
-    with path.open("w", encoding="utf-8", newline="") as handle:
-        writer = csv.DictWriter(handle, fieldnames=list(rows[0].keys()))
+    opener = gzip.open if path.suffix == ".gz" else Path.open
+    fieldnames = fieldnames_for_rows(rows)
+    with opener(path, "wt", encoding="utf-8", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=fieldnames)
         writer.writeheader()
         writer.writerows(rows)
+
+
+def fieldnames_for_rows(rows: list[dict[str, Any]]) -> list[str]:
+    fieldnames: list[str] = []
+    for row in rows:
+        for key in row:
+            if key not in fieldnames:
+                fieldnames.append(key)
+    return fieldnames
 
 
 if __name__ == "__main__":

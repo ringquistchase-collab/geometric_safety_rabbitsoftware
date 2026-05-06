@@ -21,6 +21,7 @@ AMBIGUITY_BAND_NMI = 0.05
 PLOT_FIGSIZE_WIDE = (11.5, 4.6)
 PLOT_FIGSIZE_TALL = (11.0, 8.0)
 MIN_LOG_ERROR_NMI = 1e-6
+MANUSCRIPT_FONT_FAMILY = ["Times New Roman", "Times", "Nimbus Roman", "Liberation Serif", "serif"]
 
 
 def render_projection_diagnostic_plots(
@@ -31,6 +32,7 @@ def render_projection_diagnostic_plots(
     excursion_bins_nmi: tuple[float, ...] = DEFAULT_EXCURSION_BINS_NMI,
 ) -> list[Path]:
     """Render a standard diagnostic plot set for deterministic projection sweeps."""
+    configure_manuscript_plot_style()
     output_dir.mkdir(parents=True, exist_ok=True)
     outputs = [
         output_dir / "projection_min_error_vs_excursion.pdf",
@@ -60,6 +62,21 @@ def render_projection_diagnostic_plots(
         output_path=outputs[3],
     )
     return outputs
+
+
+def configure_manuscript_plot_style() -> None:
+    """Use journal-friendly fonts and embed TrueType text in generated PDFs."""
+    plt.rcParams.update(
+        {
+            "font.family": "serif",
+            "font.serif": MANUSCRIPT_FONT_FAMILY,
+            "font.size": 12.0,
+            "mathtext.fontset": "stix",
+            "pdf.fonttype": 42,
+            "ps.fonttype": 42,
+            "axes.unicode_minus": False,
+        }
+    )
 
 
 def plot_projection_error_vs_excursion(
@@ -110,14 +127,14 @@ def plot_projection_error_vs_excursion(
             linestyle=":",
             label="0.05 NMI ambiguity band",
         )
-        ax.set_title(title, fontsize=12)
-        ax.set_xlabel("Maximum radial excursion from projection origin (NMI)", fontsize=11)
+        ax.set_title(title, fontsize=14)
+        ax.set_xlabel("Maximum radial excursion from projection origin (NMI)", fontsize=12.5)
         ax.set_yscale("log")
         ax.set_xlim(x_lower_nmi, x_upper_nmi)
         ax.grid(alpha=0.25, linewidth=0.6)
-        ax.tick_params(labelsize=10)
-        ax.legend(loc="lower left", fontsize=9, frameon=True)
-    axes[0].set_ylabel("Worst minimum-separation error (NMI)", fontsize=11)
+        ax.tick_params(labelsize=11.5)
+        ax.legend(loc="lower left", fontsize=10.5, frameon=True)
+    axes[0].set_ylabel("Worst minimum-separation error (NMI)", fontsize=12.5)
     save_figure(fig, output_path)
 
 
