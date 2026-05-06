@@ -1,6 +1,7 @@
 """Smoke tests for the manuscript evaluation helpers."""
 
 import csv
+import gzip
 import json
 from pathlib import Path
 
@@ -27,7 +28,7 @@ from paper.evaluation import (
     generate_near_threshold_suite,
     outcomes_equivalent,
 )
-from paper.run_evaluation import reconstruct_run_record_from_summary, render_existing_figures
+from paper.run_evaluation import reconstruct_run_record_from_summary, render_existing_figures, write_csv
 
 
 def test_turn_local_core_matches_public_api_default_interval():
@@ -364,3 +365,12 @@ def test_render_existing_figures_writes_pdf_only(tmp_path: Path):
     ):
         assert (output_dir / f"{stem}.pdf").exists()
         assert not (output_dir / f"{stem}.png").exists()
+
+
+def test_write_csv_creates_valid_empty_gzip(tmp_path: Path) -> None:
+    path = tmp_path / "empty.csv.gz"
+
+    write_csv(path, [])
+
+    with gzip.open(path, "rt", encoding="utf-8") as handle:
+        assert handle.read() == ""

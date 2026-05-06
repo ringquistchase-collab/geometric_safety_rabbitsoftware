@@ -14,10 +14,17 @@ figure_root="${2:-$run_root/rendered_figures}"
 application_dir="$figure_root/application"
 if [[ -n "${MAIN_RUN_DIR:-}" ]]; then
     main_run_dir="$MAIN_RUN_DIR"
-elif [[ -f "$run_root/main_evaluation/run_00_seed_20260325/summary.json" ]]; then
-    main_run_dir="$run_root/main_evaluation/run_00_seed_20260325"
-else
+elif [[ -f "$run_root/main_evaluation/summary.json" ]]; then
     main_run_dir="$run_root/main_evaluation"
+else
+    shopt -s nullglob
+    run_summaries=("$run_root"/main_evaluation/run_00_seed_*/summary.json)
+    shopt -u nullglob
+    if [[ ${#run_summaries[@]} -eq 0 ]]; then
+        echo "Could not find a renderable evaluation summary under $run_root/main_evaluation" >&2
+        exit 1
+    fi
+    main_run_dir="$(dirname "${run_summaries[0]}")"
 fi
 projection_archive="${PROJECTION_ARCHIVE:-paper/results/projection_deterministic_51_cap_100nmi.tar.gz}"
 full_archive="${FULL_ARCHIVE:-paper/results/$(basename "$run_root").tar.gz}"
@@ -45,6 +52,7 @@ run_and_log render_application_figures \
     "$uv_bin" run python -m paper.render_lateral_overlap_figure \
         --output-pdf "$application_dir/fig_lateral_overlap_schematic.pdf"
 
+# The submitted figure uses a 600x600 grid; lower CLEARANCE_GRID_DENSITY for quick previews.
 run_and_log render_clearance_grid \
     "$uv_bin" run python -m paper.render_clearance_grid_figure \
         --output-pdf "$application_dir/fig_clearance_grid.pdf" \

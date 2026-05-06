@@ -1758,11 +1758,12 @@ def write_json(path: Path, payload: dict[str, Any]) -> None:
 
 
 def write_csv(path: Path, rows: list[dict[str, Any]]) -> None:
+    opener = gzip.open if path.suffix == ".gz" else Path.open
     if not rows:
-        path.write_text("", encoding="utf-8")
+        with opener(path, "wt", newline="", encoding="utf-8"):
+            pass
         return
     fieldnames = sorted({key for row in rows for key in row})
-    opener = gzip.open if path.suffix == ".gz" else Path.open
     with opener(path, "wt", newline="", encoding="utf-8") as handle:
         writer = csv.DictWriter(handle, fieldnames=fieldnames)
         writer.writeheader()
