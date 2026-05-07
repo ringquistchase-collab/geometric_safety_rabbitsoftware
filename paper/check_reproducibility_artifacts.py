@@ -19,6 +19,11 @@ RUN_ARTIFACTS = (
     "table_4_runtime_summary.csv",
 )
 
+REPO_ROOT = Path(__file__).resolve().parents[1]
+DEFAULT_PROJECTION_ARCHIVE = (
+    REPO_ROOT / "paper" / "results" / "projection_deterministic_51_cap_100nmi.tar.gz"
+)
+
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
@@ -26,7 +31,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--projection-archive",
         type=Path,
-        default=Path("paper/results/projection_deterministic_51_cap_100nmi.tar.gz"),
+        default=DEFAULT_PROJECTION_ARCHIVE,
         help="Rendered capped projection archive.",
     )
     parser.add_argument("--require-rendered", action="store_true", help="Require rendered figure PDFs.")
