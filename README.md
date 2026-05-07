@@ -168,7 +168,9 @@ never resolve, reported as `VERTICAL_OVERLAP_NEVER_RESOLVES_S`
 ## Tests
 
 ```bash
+uv run pytest
 uv run pytest tests/
+uv run pytest paper/tests/
 uv run pytest tests/test_relevant_aircraft_turns.py
 uv run pytest tests/test_vertical_safety.py
 uv run pytest tests/test_relevant_aircraft_app.py
