@@ -1,0 +1,24 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: qfs-edge
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: qfs-edge
+  template:
+    metadata:
+      labels:
+        app: qfs-edge
+    spec:
+      containers:
+      - name: edge-agent
+        image: rabbit/qfs-edge:latest
+        env:
+        - name: NODE_ID
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        ports:
+        - containerPort: 8080
