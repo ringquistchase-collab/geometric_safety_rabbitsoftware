@@ -1,0 +1,1 @@
+./modules/qfs_node/deploy/canary_upgrade.sh modules/qfs_node/inventory/nodes.json
