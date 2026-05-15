@@ -1,0 +1,11 @@
+{
+  "nodes": [
+    {
+      "node_id": "node-01",
+      "host": "10.0.0.101",
+      "platform": "ubuntu",
+      "sdr_backends": ["hackrf","limesdr"],
+      "attested": false
+    }
+  ]
+}
