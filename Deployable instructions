@@ -1,0 +1,6 @@
+Deploy instructions:
+1. Build edge image: docker build -f docker/edge-agent.Dockerfile -t rabbit/qfs-edge:latest .
+2. Run on template node: docker run -e NODE_ID=node-01 -p 8080:8080 rabbit/qfs-edge:latest
+3. Enroll node: curl -X POST -H "Content-Type: application/json" -d '{"consent":true}' http://localhost:8080/enroll
+4. Update inventory/modules/qfs_node/inventory/nodes.json to set attested true after verification
+5. Run canary: ./deploy/canary_upgrade.sh
