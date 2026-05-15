@@ -1,0 +1,29 @@
+"""
+Minimal HackRF adapter using SoapySDR or hackrf-tools; this is a safe example.
+Only transmits when called with explicit, signed authorization for a known node.
+"""
+import logging, time
+from typing import Any
+
+LOGGER = logging.getLogger("sdr.hackrf")
+
+class Adapter:
+    def __init__(self, cfg: dict):
+        self.cfg = cfg
+        self.backend = cfg.get("device", "hackrf0")
+        LOGGER.info("HackRF adapter initialized for %s", self.backend)
+
+    def validate_target_authorization(self, target_id: str, signed_auth: dict) -> bool:
+        # TODO: Verify signature against orchestrator public key.
+        return signed_auth.get("target_id") == target_id and signed_auth.get("authorized") == True
+
+    def transmit(self, target_id: str, iq_samples: bytes, freq: float, gain: int=30) -> dict:
+        # This is a placeholder transmit: integrate SoapySDR or hackrf_transfer in production
+        LOGGER.info("Transmit to %s at %.3f MHz (len=%d)", target_id, freq/1e6, len(iq_samples))
+        # A real implementation must observe local regulations and emergency stop
+        time.sleep(0.1)
+        return {"status": "ok", "target_id": target_id, "freq": freq}
+    
+    def receive(self, timeout_ms: int=1000) -> list:
+        # Placeholder: return empty or simulated IQ blocks
+        return []
