@@ -1,0 +1,22 @@
+"""
+Simulator adapter for development/testing. No RF hardware required.
+"""
+import logging, time
+LOGGER = logging.getLogger("sdr.sim")
+
+class Adapter:
+    def __init__(self, cfg: dict):
+        self.cfg = cfg
+        LOGGER.info("Simulator adapter ready")
+
+    def validate_target_authorization(self, target_id: str, signed_auth: dict) -> bool:
+        # In simulator, be permissive for local testing but still require flag
+        return signed_auth.get("simulator_ok", False) and signed_auth.get("target_id") == target_id
+
+    def transmit(self, target_id: str, iq_samples: bytes, freq: float, gain: int=0):
+        LOGGER.info("Sim transmit to %s freq=%.3fMHz len=%d", target_id, freq/1e6, len(iq_samples))
+        time.sleep(0.01)
+        return {"status":"sim_ok", "target_id": target_id}
+    
+    def receive(self, timeout_ms: int=1000):
+        return []
