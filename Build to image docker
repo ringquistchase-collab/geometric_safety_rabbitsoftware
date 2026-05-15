@@ -1,0 +1,9 @@
+# Build edge image
+cd modules/qfs_node
+docker build -f docker/edge-agent.Dockerfile -t rabbit/qfs-edge:latest .
+
+# Run locally
+docker run --rm -p 8080:8080 -e NODE_ID=node-01 rabbit/qfs-edge:latest
+
+# Enroll
+curl -X POST -H "Content-Type: application/json" -d '{"consent":true}' http://localhost:8080/enroll
