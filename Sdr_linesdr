@@ -1,0 +1,21 @@
+"""
+LimeSDR adapter stub. Use SoapySDR for production.
+"""
+import logging, time
+LOGGER = logging.getLogger("sdr.limesdr")
+
+class Adapter:
+    def __init__(self, cfg: dict):
+        self.cfg = cfg
+        LOGGER.info("LimeSDR adapter initialized")
+
+    def validate_target_authorization(self, target_id: str, signed_auth: dict) -> bool:
+        return signed_auth.get("target_id") == target_id and signed_auth.get("authorized") == True
+
+    def transmit(self, target_id: str, iq_samples: bytes, freq: float, gain: int=30):
+        LOGGER.info("Lime transmit to %s freq=%.3fMHz len=%d", target_id, freq/1e6, len(iq_samples))
+        time.sleep(0.1)
+        return {"status":"ok", "target_id":target_id}
+    
+    def receive(self, timeout_ms: int=1000):
+        return []
