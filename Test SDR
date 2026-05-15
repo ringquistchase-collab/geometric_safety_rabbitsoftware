@@ -1,0 +1,5 @@
+# quick test
+from modules.qfs_node.sdr.backend import SDRBackend
+b = SDRBackend("simulator", {})
+auth = {"simulator_ok": True, "target_id": "node-01"}
+print(b.tx_payload("node-01", auth, b'012345', 1e6))
