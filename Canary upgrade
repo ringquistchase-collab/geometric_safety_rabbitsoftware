@@ -1,0 +1,18 @@
+#!/bin/bash
+# Canary upgrade script: apply update to a small set of attested nodes
+set -e
+NODES_FILE="${1:-modules/qfs_node/inventory/nodes.json}"
+# jq required
+if ! command -v jq >/dev/null; then echo "install jq"; exit 1; fi
+NODE_IDS=$(jq -r '.nodes[] | select(.attested==true) | .node_id' $NODES_FILE)
+# pick first attested node as canary
+CANARY=$(echo "$NODE_IDS" | head -n1)
+if [ -z "$CANARY" ]; then
+  echo "No attested nodes found. Run enrollment first."
+  exit 2
+fi
+echo "Selected canary: $CANARY"
+# Example: trigger orchestrator API to deploy image to CANARY
+ORCH="${ORCHESTRATOR_URL:-http://orchestrator.local:8080/deploy}"
+curl -s -X POST -H "Content-Type: application/json" -d "{"node_id":"$CANARY","image":"rabbit/qfs-edge:latest"}" $ORCH
+echo "Canary deploy requested to $CANARY"
