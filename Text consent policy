@@ -1,0 +1,4 @@
+QFS Node Consent Policy (required)
+- Explicit consent required before enabling any biosensor or RF transmit.
+- Consent must be logged and signed by node key.
+- Raw biosignals remain local unless explicit export is requested.
