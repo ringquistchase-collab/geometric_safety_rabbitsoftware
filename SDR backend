@@ -1,0 +1,40 @@
+"""
+SDR backend abstraction. Selects an adapter by name and exposes transmit/receive
+APIs. No automatic broadcast to unknown nodes. Requires explicit target list
+and signed authorization per-target.
+"""
+from typing import Optional
+import importlib
+import logging
+
+LOGGER = logging.getLogger("sdr.backend")
+
+class SDRBackend:
+    def __init__(self, adapter_name: str, config: Optional[dict]=None):
+        self.adapter_name = adapter_name
+        self.config = config or {}
+        self.adapter = self._load_adapter(adapter_name)
+
+    def _load_adapter(self, name: str):
+        if name == "hackrf":
+            mod = importlib.import_module("modules.qfs_node.sdr.hackrf_adapter")
+        elif name == "limesdr":
+            mod = importlib.import_module("modules.qfs_node.sdr.limesdr_adapter")
+        elif name == "simulator":
+            mod = importlib.import_module("modules.qfs_node.sdr.simulator_adapter")
+        else:
+            raise ValueError(f"Unknown SDR adapter {name}")
+        return mod.Adapter(self.config)
+
+    def tx_payload(self, target_id: str, signed_authorization: dict, iq_samples: bytes, freq: float, gain: int=30):
+        """
+        Transmit IQ payload to explicit target_id only if authorization validates.
+        signed_authorization must contain a signature proving the orchestrator permitted this target.
+        """
+        if not self.adapter.validate_target_authorization(target_id, signed_authorization):
+            LOGGER.warning("Authorization failed for target %s", target_id)
+            raise PermissionError("Target not authorized")
+        return self.adapter.transmit(target_id, iq_samples, freq, gain)
+
+    def rx_samples(self, timeout_ms: int=1000):
+        return self.adapter.receive(timeout_ms)
