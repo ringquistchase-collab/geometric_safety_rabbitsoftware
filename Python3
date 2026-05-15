@@ -1,0 +1,40 @@
+#!/usr/bin/env python3
+from flask import Flask, request, jsonify
+import logging, os, uuid, json
+from modules.qfs_node.security.key_utils import get_or_create_key, sign_authorization
+
+app = Flask(__name__)
+logging.basicConfig(level=logging.INFO)
+NODE_ID = os.environ.get("NODE_ID", str(uuid.uuid4()))
+KEY = get_or_create_key()
+
+@app.route("/enroll", methods=["POST"])
+def enroll():
+    body = request.json or {}
+    consent = body.get("consent", False)
+    if not consent:
+        return jsonify({"status":"consent_required"}), 400
+    payload = {"node_id": NODE_ID, "consent": True}
+    sig = sign_authorization(json.dumps(payload).encode(), KEY)
+    # In production, this would POST to orchestrator's enrollment endpoint
+    logging.info("Enrolled node %s (signed payload: %s...)", NODE_ID, sig[:16])
+    return jsonify({"status":"enrolled","node_id":NODE_ID,"signature":sig})
+
+@app.route("/authorize_tx", methods=["POST"])
+def authorize_tx():
+    # Receives signed authorization from orchestrator and validates it locally
+    body = request.json or {}
+    # Very small validation for demo
+    required = ["target_id","authorized","signature"]
+    if not all(k in body for k in required):
+        return jsonify({"status":"bad_request"}), 400
+    # Should verify orchestrator signature; stub:
+    logging.info("Received tx authorization for target %s", body.get("target_id"))
+    return jsonify({"status":"ok"})
+
+@app.route("/status")
+def status():
+    return jsonify({"node_id": NODE_ID, "sdr_backends": ["hackrf","limesdr"]})
+
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=8080)
