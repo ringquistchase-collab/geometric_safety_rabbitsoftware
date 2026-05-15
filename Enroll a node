@@ -1,0 +1,24 @@
+"""
+Enroll a node (run locally on the node). This script performs:
+- TPM key provision (stub)
+- posts enrollment to orchestrator (not included) with signed attestation
+"""
+import requests, json, os
+from pathlib import Path
+from ..security.key_utils import get_or_create_key, sign_authorization
+
+ORCHESTRATOR_URL = os.environ.get("ORCHESTRATOR_URL","http://orchestrator.local:8080/enroll")
+
+def enroll(node_id: str, consent: bool=True):
+    key = get_or_create_key()
+    payload = {"node_id": node_id, "consent": consent}
+    sig = sign_authorization(json.dumps(payload).encode(), key)
+    body = {"payload": payload, "signature": sig}
+    # In production use HTTPS and proper certs
+    r = requests.post(ORCHESTRATOR_URL, json=body, timeout=10)
+    return r.status_code, r.text
+
+if __name__ == "__main__":
+    import sys
+    nid = sys.argv[1] if len(sys.argv)>1 else "node-01"
+    print(enroll(nid))
